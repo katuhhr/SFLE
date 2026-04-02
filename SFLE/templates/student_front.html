@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SFLE Student</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f3f6fb; }
+        header { background: #fff; border-bottom: 1px solid #d7e0ef; padding: 12px 20px; display: flex; gap: 12px; flex-wrap: wrap; }
+        button { padding: 8px 12px; border: 1px solid #b8c7e2; border-radius: 8px; background: #fff; cursor: pointer; }
+        button.active { background: #204184; color: #fff; border-color: #204184; }
+        .layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; padding: 16px; }
+        .card { background: #fff; border: 1px solid #d7e0ef; border-radius: 12px; padding: 16px; }
+        .topic-btn { width: 100%; margin-bottom: 8px; text-align: left; }
+        h2, h3 { margin-top: 0; }
+        #content section { margin-bottom: 20px; }
+        .muted { color: #6b7280; }
+    </style>
+</head>
+<body>
+<header>
+    <button id="tab-materials" class="active">Учебные материалы</button>
+    <button id="tab-debts">Долги</button>
+    <button id="tab-grades">Успеваемость</button>
+    <button id="tab-selfstudy">Самоподготовка</button>
+    <button id="tab-profile">Профиль</button>
+</header>
+
+<div class="layout">
+    <aside class="card">
+        <h3>Темы</h3>
+        <div id="topics"></div>
+    </aside>
+    <main class="card" id="content"></main>
+</div>
+
+<script>
+const content = document.getElementById('content');
+const topicsEl = document.getElementById('topics');
+let currentThemeId = null;
+
+function setActiveTab(id) {
+  ['materials','debts','grades','selfstudy','profile'].forEach(x => {
+    document.getElementById('tab-' + x).classList.toggle('active', x === id);
+  });
+}
+
+function scrollToId(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function api(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function loadTopics() {
+  const resp = await api('/api/student/themes/');
+  const topics = resp.data || [];
+  topicsEl.innerHTML = '';
+  if (!topics.length) {
+    topicsEl.innerHTML = '<div class="muted">Нет тем</div>';
+    return;
+  }
+  topics.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'topic-btn';
+    b.textContent = t.name;
+    b.onclick = () => showMaterials(t.id);
+    topicsEl.appendChild(b);
+  });
+  if (!currentThemeId) showMaterials(topics[0].id);
+}
+
+async function showMaterials(themeId) {
+  setActiveTab('materials');
+  currentThemeId = themeId;
+  const [detail, tasks] = await Promise.all([
+    api('/api/student/themes/' + themeId + '/'),
+    api('/api/student/themes/' + themeId + '/tasks/')
+  ]);
+  const d = detail.data;
+  const taskItems = (tasks.data.tasks || []).map(t => `<li>${t.text} <span class="muted">(${new Date(t.deadline).toLocaleString()})</span></li>`).join('');
+  content.innerHTML = `
+    <h2>${d.name}</h2>
+    <p>
+      <a href="#theory" onclick="event.preventDefault();scrollToId('theory')">Теория</a> |
+      <a href="#links" onclick="event.preventDefault();scrollToId('links')">Ссылки</a> |
+      <a href="#tasks" onclick="event.preventDefault();scrollToId('tasks')">Задания</a>
+    </p>
+    <section id="theory"><h3>Теория</h3><div>${d.theory?.content || '<span class="muted">Нет теории</span>'}</div></section>
+    <section id="links"><h3>Ссылки</h3>
+      <p><a href="#theory" onclick="event.preventDefault();scrollToId('theory')">К теории</a></p>
+      <p><a href="#tasks" onclick="event.preventDefault();scrollToId('tasks')">К заданиям</a></p>
+    </section>
+    <section id="tasks"><h3>Задания</h3><ol>${taskItems || '<li class="muted">Нет заданий</li>'}</ol></section>
+  `;
+}
+
+async function showDebts() {
+  setActiveTab('debts');
+  const resp = await api('/api/student/dashboard/');
+  const d = resp.data;
+  const current = d.current_tasks?.[0];
+  const debts = (d.debts || []).map(x => `<li>${x.title}</li>`).join('');
+  content.innerHTML = `
+    <h2>Долги</h2>
+    <h3>Текущее задание</h3>
+    <p>${current ? current.title : '<span class="muted">Нет текущих заданий</span>'}</p>
+    <h3>Долги</h3>
+    <ul>${debts || '<li class="muted">Долгов нет</li>'}</ul>
+  `;
+}
+
+async function showGrades() {
+  setActiveTab('grades');
+  const resp = await api('/api/student/progress/');
+  const tests = resp.data.test_results || [];
+  content.innerHTML = '<h2>Успеваемость</h2>' +
+    (tests.length
+      ? '<ul>' + tests.map(t => `<li>${t.test_name}: ${t.score}/${t.max_score} (${t.percentage}%)</li>`).join('') + '</ul>'
+      : '<p class="muted">Пока нет результатов тестов</p>');
+}
+
+async function showSelfStudy() {
+  setActiveTab('selfstudy');
+  const resp = await api('/api/student/self-study/');
+  const items = resp.data || [];
+  content.innerHTML = '<h2>Самоподготовка</h2>' +
+    (items.length
+      ? '<ul>' + items.map(i => `<li><b>${i.title}</b><br>${i.content}</li>`).join('') + '</ul>'
+      : '<p class="muted">Нет материалов</p>');
+}
+
+async function showProfile() {
+  setActiveTab('profile');
+  const resp = await api('/api/student/profile/');
+  const p = resp.data;
+  content.innerHTML = `
+    <h2>Профиль</h2>
+    <p><b>ФИО:</b> ${p.full_name}</p>
+    <p><b>Логин:</b> ${p.username}</p>
+    <p><b>Email:</b> ${p.email || '-'}</p>
+    <p><b>Группа:</b> ${p.group_name || '-'}</p>
+  `;
+}
+
+document.getElementById('tab-materials').onclick = () => showMaterials(currentThemeId || 1);
+document.getElementById('tab-debts').onclick = showDebts;
+document.getElementById('tab-grades').onclick = showGrades;
+document.getElementById('tab-selfstudy').onclick = showSelfStudy;
+document.getElementById('tab-profile').onclick = showProfile;
+
+loadTopics().catch((e) => {
+  console.error(e);
+  content.innerHTML = '<h2>Ошибка</h2><p class="muted">Не удалось загрузить данные. Проверь миграции и записи в БД.</p>';
+});
+</script>
+</body>
+</html>

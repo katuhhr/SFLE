@@ -1,13 +1,27 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, LogOut } from 'lucide-react';
 import './student_profile.css';
+import { apiGet } from '../../../api/client';
+
+type StudentProfileData = {
+    id: number;
+    username: string;
+    firstname: string;
+    lastname: string;
+    full_name: string;
+    email: string;
+    group_name: string | null;
+};
+type ApiWrap<T> = { status: 'success' | 'error'; data: T };
 
 const StudentProfile: React.FC = () => {
-    const studentData = {
-        name: 'Иванов Иван Иванович',
-        group: 'ИСП-401',
-        role: 'Студент'
-    };
+    const [studentData, setStudentData] = useState<StudentProfileData | null>(null);
+
+    useEffect(() => {
+        apiGet<ApiWrap<StudentProfileData>>('/api/student/profile/')
+            .then((resp) => setStudentData(resp.data))
+            .catch((err) => console.error('Ошибка загрузки профиля:', err));
+    }, []);
 
     const handleLogout = () => {
         console.log("Выход из системы...");
@@ -24,12 +38,12 @@ const StudentProfile: React.FC = () => {
                     <div className="info-rows">
                         <div className="info-block">
                             <span className="label">ФИО</span>
-                            <h2 className="display-name">{studentData.name}</h2>
+                            <h2 className="display-name">{studentData?.full_name || 'Загрузка...'}</h2>
                         </div>
 
                         <div className="info-block">
                             <span className="label">Группа</span>
-                            <p className="display-group">{studentData.group}</p>
+                            <p className="display-group">{studentData?.group_name || '-'}</p>
                         </div>
 
                         <div className="info-block">

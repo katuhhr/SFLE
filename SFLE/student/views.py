@@ -142,6 +142,28 @@ def get_theme_detail(request, theme_id):
     })
 
 
+#задания по теме
+@api_view(['GET'])
+def get_theme_tasks(request, theme_id):
+    """Получить список заданий по теме с сортировкой по дедлайну"""
+    theme = get_object_or_404(Theme, id=theme_id)
+    tasks_qs = Task.objects.filter(theme=theme).order_by('deadline_date')
+
+    tasks = [{
+        'id': t.id,
+        'text': t.text,
+        'deadline': t.deadline_date
+    } for t in tasks_qs]
+
+    return Response({
+        'status': 'success',
+        'data': {
+            'theme': {'id': theme.id, 'name': theme.name},
+            'tasks': tasks
+        }
+    })
+
+
 #получить тест
 @api_view(['GET'])
 def get_test(request, theme_id):

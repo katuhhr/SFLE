@@ -8,6 +8,7 @@ urlpatterns = [
     path('dashboard/', views.get_dashboard, name='dashboard'),
     path('themes/', views.get_themes, name='themes'),
     path('themes/<int:theme_id>/', views.get_theme_detail, name='theme_detail'),
+    path('themes/<int:theme_id>/tasks/', views.get_theme_tasks, name='theme_tasks'),
     path('themes/<int:theme_id>/test/', views.get_test, name='get_test'),
     path('themes/<int:theme_id>/test/submit/', views.submit_test, name='submit_test'),
     path('progress/', views.get_progress, name='progress'),

@@ -5,12 +5,15 @@ import sys
 
 # 1. Пути
 BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR.parent
+FRONTEND_BUILD_DIR = FRONTEND_DIR / 'build'
+TEMPLATES_DIR = BASE_DIR / 'templates'
 sys.path.insert(0, os.path.join(BASE_DIR))
 
 # 2. Безопасность
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 DEBUG = True  # Не забудь выключить в продакшене
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 # 3. Приложения
 INSTALLED_APPS = [
@@ -47,15 +50,28 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'SFLE.urls'
 WSGI_APPLICATION = 'SFLE.wsgi.application'
 
-# 5. База данных (PostgreSQL)
+# 3.1 Шаблоны (нужно для django.contrib.admin)
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [TEMPLATES_DIR, FRONTEND_BUILD_DIR],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+# 5. База данных (локально используем SQLite для быстрого старта)
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'sfle_db',
-        'USER': 'postgres',
-        'PASSWORD': 'your_password',  # Замени на свой реальный пароль
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -89,6 +105,7 @@ SIMPLE_JWT = {
 # 8. CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -99,6 +116,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = []
+if (FRONTEND_BUILD_DIR / 'static').exists():
+    STATICFILES_DIRS.append(FRONTEND_BUILD_DIR / 'static')
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

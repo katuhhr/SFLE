@@ -1,31 +1,14 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
 from .models import (
-    User, StudentGroup, Course, Major, Schedule, 
+    User, Group, Course, Major, Schedule, 
     Theory, File, Question, AnswerOption
 )
 
 @admin.register(User)
-class CustomUserAdmin(UserAdmin):
-    list_display = ('email', 'username', 'role', 'group', 'is_staff', 'is_active')
+class CustomUserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'firstname', 'lastname', 'email', 'role', 'group', 'is_staff', 'is_active')
     list_filter = ('role', 'is_active', 'is_staff', 'group')
-    search_fields = ('email', 'username', 'phone', 'first_name', 'last_name')
-    ordering = ('-date_joined',)
-    
-    fieldsets = (
-        (None, {'fields': ('email', 'username', 'password')}),
-        ('Личная информация', {'fields': ('first_name', 'last_name', 'phone', 'avatar')}),
-        ('Учебные данные', {'fields': ('role', 'group')}),
-        ('Права доступа', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
-        ('Даты', {'fields': ('last_login', 'date_joined')}),
-    )
-    
-    add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('email', 'username', 'role', 'group', 'password'),
-        }),
-    )
+    search_fields = ('username', 'firstname', 'lastname', 'email')
 
 class AnswerOptionInline(admin.TabularInline):
     model = AnswerOption
@@ -37,9 +20,8 @@ class QuestionAdmin(admin.ModelAdmin):
     list_filter = ('text_type',)
     inlines = [AnswerOptionInline]
 
-# ПЕРЕИМЕНОВАНО: StudentGroup вместо Group
-@admin.register(StudentGroup)
-class StudentGroupAdmin(admin.ModelAdmin):
+@admin.register(Group)
+class GroupAdmin(admin.ModelAdmin):
     list_display = ('name', 'course', 'major', 'teacher')
     list_filter = ('course', 'major')
 

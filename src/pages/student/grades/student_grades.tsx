@@ -1,12 +1,46 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './student_grades.css';
+import { apiGet } from '../../../api/client';
+
+type Attendance = { date_str: string; is_came: boolean; is_completed: boolean };
+type TestResult = { test_name: string; date: string; score: number; max_score: number; percentage: number };
+type ProgressData = { attendance: Attendance[]; test_results: TestResult[]; tasks: unknown[] };
+type ApiWrap<T> = { status: 'success' | 'error'; data: T };
 
 const StudentGrades: React.FC = () => {
-    // Пример данных, которые в будущем придут из базы данных
-    const gradesData = [
-        { date: "25.03.2025", dialog: "+", test: "10", work1: "", work2: "", work3: "", work4: "", work5: "" },
-        // Можно добавить больше строк для проверки скролла
-    ];
+    const [progress, setProgress] = useState<ProgressData | null>(null);
+
+    useEffect(() => {
+        apiGet<ApiWrap<ProgressData>>('/api/student/progress/')
+            .then((resp) => setProgress(resp.data))
+            .catch((err) => console.error('Ошибка загрузки успеваемости:', err));
+    }, []);
+
+    const gradesData = useMemo(() => {
+        const attendanceRows = (progress?.attendance || []).map((a) => ({
+            date: a.date_str,
+            dialog: a.is_came ? '+' : '-',
+            test: '',
+            work1: a.is_completed ? '+' : '-',
+            work2: '',
+            work3: '',
+            work4: '',
+            work5: '',
+        }));
+
+        const testRows = (progress?.test_results || []).map((t) => ({
+            date: t.date,
+            dialog: '',
+            test: `${t.score}/${t.max_score}`,
+            work1: `${t.percentage}%`,
+            work2: '',
+            work3: '',
+            work4: '',
+            work5: '',
+        }));
+
+        return [...testRows, ...attendanceRows];
+    }, [progress]);
 
     return (
         <div className="student-grades-container">
@@ -40,7 +74,6 @@ const StudentGrades: React.FC = () => {
                                 <td>{row.work5}</td>
                             </tr>
                         ))}
-                        {/* Пустые строки для соответствия макету */}
                         {[...Array(5)].map((_, i) => (
                             <tr key={`empty-${i}`}>
                                 <td className="sticky-col"></td>

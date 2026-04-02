@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Folder } from 'lucide-react';
 import './student_self_study.css';
+import { apiGet } from '../../../api/client';
+import { useEffect } from 'react';
+
+type SelfStudyItem = { id: number; title: string; content: string };
+type ApiWrap<T> = { status: 'success' | 'error'; data: T };
 
 const StudentSelfStudy: React.FC = () => {
-    const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+    const [topics, setTopics] = useState<SelfStudyItem[]>([]);
+    const [selectedTopic, setSelectedTopic] = useState<SelfStudyItem | null>(null);
 
-    // Пример списка тем для главного экрана
-    const topics = [
-        "Тема №1 Неправильные глаголы",
-        "Тема №2 Времена Present",
-        "Тема №3 Модальные глаголы"
-    ];
+    useEffect(() => {
+        apiGet<ApiWrap<SelfStudyItem[]>>('/api/student/self-study/')
+            .then((resp) => setTopics(resp.data))
+            .catch((err) => console.error('Ошибка загрузки самоподготовки:', err));
+    }, []);
 
-    // Пример контента. Если строка пустая — лист будет чистым.
-    const topicContent = "";
-    // const topicContent = "Здесь будет текст лекции, который закинет преподаватель...";
-
-    // Экран просмотра конкретной темы (Второй макет — чистый лист)
     if (selectedTopic) {
         return (
             <div className="student-self-study-view">
@@ -26,25 +26,22 @@ const StudentSelfStudy: React.FC = () => {
                             <ArrowLeft size={22} color="#111827" />
                         </button>
                         <div className="topic-title-badge">
-                            {selectedTopic}
+                            {selectedTopic.title}
                         </div>
                     </header>
 
-                    {/* Контентная область — теперь это просто чистый текст */}
                     <div className="topic-sheet-content">
-                        {topicContent && (
-                            <div className="material-text-content">
-                                {topicContent}
-                            </div>
+                        {selectedTopic.content ? (
+                            <div className="material-text-content">{selectedTopic.content}</div>
+                        ) : (
+                            <div className="material-text-content">Материал пока пуст.</div>
                         )}
-                        {/* Если topicContent пустой, здесь просто белый фон листа */}
                     </div>
                 </main>
             </div>
         );
     }
 
-    // Главный экран списка тем
     return (
         <div className="student-self-study-view">
             <div className="study-main-card">
@@ -58,7 +55,7 @@ const StudentSelfStudy: React.FC = () => {
                             onClick={() => setSelectedTopic(topic)}
                         >
                             <Folder size={20} color="#1E3A8A" strokeWidth={1.5} />
-                            <span className="topic-pill-text">{topic}</span>
+                            <span className="topic-pill-text">{topic.title}</span>
                         </div>
                     ))}
                 </div>

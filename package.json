@@ -24,6 +24,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
+    "start:all": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\start-all.ps1",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
