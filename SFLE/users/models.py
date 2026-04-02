@@ -12,8 +12,13 @@ class User(AbstractUser):
     ]
     
     username = models.CharField(max_length=100, unique=True, verbose_name='Логин')
-    lastname = models.CharField(max_length=100, verbose_name='Фамилия')
-    firstname = models.CharField(max_length=100, verbose_name='Имя')
+    # В БД колонки firstname / lastname, не стандартные first_name / last_name из AbstractUser
+    first_name = models.CharField(
+        'Имя', max_length=100, blank=True, db_column='firstname',
+    )
+    last_name = models.CharField(
+        'Фамилия', max_length=100, blank=True, db_column='lastname',
+    )
     password = models.CharField(max_length=200, verbose_name='Пароль')
     is_active = models.BooleanField(default=True, verbose_name='Активен')
     role = models.CharField(max_length=50, choices=ROLE_CHOICES, verbose_name='Роль')
@@ -26,8 +31,24 @@ class User(AbstractUser):
         verbose_name = 'Пользователь'
         verbose_name_plural = 'Пользователи'
     
+    @property
+    def firstname(self):
+        return self.first_name
+
+    @firstname.setter
+    def firstname(self, value):
+        self.first_name = value
+
+    @property
+    def lastname(self):
+        return self.last_name
+
+    @lastname.setter
+    def lastname(self, value):
+        self.last_name = value
+
     def __str__(self):
-        return f"{self.firstname} {self.lastname} ({self.get_role_display()})"
+        return f"{self.first_name} {self.last_name} ({self.get_role_display()})"
     
     def is_student(self):
         return self.role == 'student'
@@ -60,6 +81,27 @@ class Group(models.Model):
         return self.name
 
 
+class GradebookSheet(models.Model):
+    """Ведомость: заголовки колонок и оценки по студентам группы (JSON)."""
+    group = models.OneToOneField(
+        Group,
+        on_delete=models.CASCADE,
+        related_name='gradebook_sheet',
+        primary_key=True,
+        verbose_name='Группа',
+    )
+    column_titles = models.JSONField(default=list, verbose_name='Заголовки колонок')
+    cells = models.JSONField(default=dict, verbose_name='Ячейки: student_id → список значений')
+
+    class Meta:
+        db_table = 'gradebook_sheet'
+        verbose_name = 'Ведомость'
+        verbose_name_plural = 'Ведомости'
+
+    def __str__(self):
+        return f'Ведомость {self.group.name}'
+
+
 class Course(models.Model):
     id = models.AutoField(primary_key=True)
     number = models.IntegerField(verbose_name='Номер курса')
@@ -76,23 +118,24 @@ class Course(models.Model):
 class Major(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200, verbose_name='Название специальности')
-    
+
     class Meta:
         db_table = 'major'
         verbose_name = 'Специальность'
         verbose_name_plural = 'Специальности'
-    
+
     def __str__(self):
         return self.name
 
 
 class Schedule(models.Model):
+    """Соответствует таблице schedule в PostgreSQL (sfle_db)."""
     id = models.AutoField(primary_key=True)
-    start_couple_time = models.DateTimeField(verbose_name='Начало пары')
-    end_couple_time = models.DateTimeField(verbose_name='Конец пары')
-    name = models.CharField(max_length=200, verbose_name='Название')
-    cabinet = models.CharField(max_length=100, verbose_name='Кабинет')
-    groups = models.ManyToManyField(Group, through='ScheduleToGroup', related_name='schedules', verbose_name='Группы')
+    group_name = models.CharField(max_length=200, verbose_name='Группа')
+    day_of_week = models.CharField(max_length=20, verbose_name='День недели')
+    lesson_date = models.DateField(verbose_name='Дата занятия')
+    lesson_time = models.TimeField(verbose_name='Время')
+    room = models.CharField(max_length=50, verbose_name='Аудитория')
     
     class Meta:
         db_table = 'schedule'
@@ -100,16 +143,7 @@ class Schedule(models.Model):
         verbose_name_plural = 'Расписания'
     
     def __str__(self):
-        return f"{self.name} - {self.start_couple_time}"
-
-
-class ScheduleToGroup(models.Model):
-    schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE)
-    group = models.ForeignKey(Group, on_delete=models.CASCADE)
-    
-    class Meta:
-        db_table = 'schedule_to_group'
-        unique_together = [['schedule', 'group']]
+        return f'{self.group_name} {self.lesson_date} {self.lesson_time}'
 
 
 class Theory(models.Model):
@@ -291,6 +325,14 @@ class Theme(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200, verbose_name='Название')
     theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name='themes', verbose_name='Теория')
+    major = models.ForeignKey(
+        'Major', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='themes', verbose_name='Специальность',
+    )
+    course = models.ForeignKey(
+        'Course', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='themes', verbose_name='Курс',
+    )
     
     class Meta:
         db_table = 'theme'
@@ -299,6 +341,27 @@ class Theme(models.Model):
     
     def __str__(self):
         return self.name
+
+
+class Material(models.Model):
+    """Учебные материалы; таблица material (theme_id → theme)."""
+    id = models.AutoField(primary_key=True)
+    theme = models.ForeignKey(
+        Theme, on_delete=models.CASCADE, related_name='materials', verbose_name='Тема',
+    )
+    title = models.CharField(max_length=200, verbose_name='Заголовок')
+    type = models.CharField(max_length=50, verbose_name='Тип')
+    url = models.TextField(blank=True, null=True, verbose_name='Ссылка')
+    description = models.TextField(blank=True, null=True, verbose_name='Описание')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    
+    class Meta:
+        db_table = 'material'
+        verbose_name = 'Материал'
+        verbose_name_plural = 'Материалы'
+    
+    def __str__(self):
+        return self.title
 
 
 class Test(models.Model):

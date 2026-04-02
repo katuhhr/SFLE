@@ -11,6 +11,8 @@ class TeacherApplicationSerializer(serializers.ModelSerializer):
 
 
 class TeacherListSerializer(serializers.ModelSerializer):
+    firstname = serializers.CharField(source='first_name', read_only=True)
+    lastname = serializers.CharField(source='last_name', read_only=True)
     full_name = serializers.SerializerMethodField()
     groups_taught_names = serializers.SerializerMethodField()
     
@@ -19,7 +21,7 @@ class TeacherListSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'firstname', 'lastname', 'full_name', 'email', 'groups_taught_names']
     
     def get_full_name(self, obj):
-        return f"{obj.firstname} {obj.lastname}".strip() or obj.username
+        return f"{obj.first_name} {obj.last_name}".strip() or obj.username
 
     def get_groups_taught_names(self, obj):
         # В вашей схеме БД нет group.teacher_id, поэтому считаем,
@@ -40,7 +42,7 @@ class GroupSerializer(serializers.ModelSerializer):
     def get_teacher_name(self, obj):
         teacher = User.objects.filter(role='teacher', group=obj).first()
         if teacher:
-            return f"{teacher.firstname} {teacher.lastname}".strip() or teacher.username
+            return f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
         return "Не назначен"
 
 

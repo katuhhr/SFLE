@@ -30,6 +30,44 @@
     background: white;
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+}
+
+.sidebar-status {
+    padding: 12px 16px;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.sidebar-status-err {
+    color: #b91c1c;
+    background: #fef2f2;
+}
+
+.sidebar-theory-block {
+    border-bottom: 1px solid #f0f2f5;
+}
+
+.sidebar-theory-title {
+    padding: 10px 20px 4px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+.sidebar-theme-block {
+    padding-bottom: 4px;
+}
+
+.sidebar-theme-title {
+    padding: 6px 20px 2px 24px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e3a8a;
 }
 
 .topic-item {
@@ -65,6 +103,37 @@
     padding: 30px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
     min-height: 600px;
+}
+
+.content-meta {
+    margin-bottom: 16px;
+}
+
+.content-type-badge {
+    display: inline-block;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1e3a8a;
+    text-transform: uppercase;
+}
+
+.material-link-row {
+    margin-bottom: 16px;
+}
+
+.material-external-link {
+    color: #2563eb;
+    word-break: break-all;
+}
+
+.material-description {
+    white-space: pre-wrap;
+}
+
+.lecturer-text.muted {
+    color: #9ca3af;
 }
 
 .content-topic-header {

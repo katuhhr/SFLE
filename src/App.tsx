@@ -4,6 +4,7 @@ import './App.css';
 import Login from "./pages/registration/login";
 import AdminPage from "./pages/admin/admin_page";
 import TeacherProfileForAdmin from "./pages/teacher_for_admin/teacher_profile_page_for_admin";
+import AdminGuard from "./components/admin/AdminGuard";
 
 import TeacherLayout from "./components/teacher/teacher_layout";
 import TeacherProfilePage from "./pages/teacher/profile/teacher_profile";
@@ -26,9 +27,23 @@ const App = () => {
                 <Routes>
                     <Route path="/" element={<Login />} />
 
-                    {/* Страницы админа */}
-                    <Route path="/admin" element={<AdminPage />} />
-                    <Route path="/admin/teacher/:id" element={<TeacherProfileForAdmin />} />
+                    {/* Панель администратора (только role=admin) */}
+                    <Route
+                        path="/admin"
+                        element={
+                            <AdminGuard>
+                                <AdminPage />
+                            </AdminGuard>
+                        }
+                    />
+                    <Route
+                        path="/admin/teacher/:id"
+                        element={
+                            <AdminGuard>
+                                <TeacherProfileForAdmin />
+                            </AdminGuard>
+                        }
+                    />
 
                     {/* Личный кабинет преподавателя */}
                     <Route path="/teacher" element={<TeacherLayout />}>

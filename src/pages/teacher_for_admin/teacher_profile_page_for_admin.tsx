@@ -1,175 +1,103 @@
 import React, { FC, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ITeacherProfile } from '../../types/types';
+import { authFetch } from '../../api/authFetch';
 import './teacher_profile_page_for_admin.css';
 
-const TeacherProfilePage: FC = () => {
+interface TeacherApi {
+    id: number;
+    username: string;
+    email?: string;
+    full_name: string;
+    groups_taught?: { id: number; name: string }[];
+}
+
+const TeacherProfilePageForAdmin: FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-
-    const [isEditing, setIsEditing] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedSpecialty, setSelectedSpecialty] = useState('ИСПк');
-    const [groupNumber, setGroupNumber] = useState('');
-
-    const [profile, setProfile] = useState<ITeacherProfile>({
-        id: Number(id),
-        fullName: 'Петров. С. Р',
-        role: 'Преподаватель',
-        login: '',
-        password: '',
-        groups: [
-            { id: 1, name: 'ИСПк', courses: ['104', '304'] },
-            { id: 2, name: 'Фк', courses: ['202', '204', '403'] },
-            { id: 3, name: 'Рк', courses: ['104'] },
-            { id: 4, name: 'Зк', courses: ['102'] },
-        ]
-    });
-
-    const [tempProfile, setTempProfile] = useState(profile);
+    const [teacher, setTeacher] = useState<TeacherApi | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const savedData = JSON.parse(localStorage.getItem(`profile_${id}`) || 'null');
-        if (savedData) {
-            setProfile(savedData);
-            setTempProfile(savedData);
-        }
-    }, [id]);
-
-    const handleSave = () => {
-        setProfile(tempProfile);
-        localStorage.setItem(`profile_${id}`, JSON.stringify(tempProfile));
-        setIsEditing(false);
-    };
-
-    const deleteCourse = (groupId: number, cIdx: number) => {
-        if (!isEditing) return;
-        setTempProfile({
-            ...tempProfile,
-            groups: tempProfile.groups.map(g =>
-                g.id === groupId ? { ...g, courses: g.courses.filter((_, i) => i !== cIdx) } : g
-            )
-        });
-    };
-
-    const submitNewGroup = () => {
-        if (!groupNumber.trim()) return;
-        const updatedGroups = tempProfile.groups.map(g => {
-            if (g.name === selectedSpecialty) {
-                return { ...g, courses: [...g.courses, groupNumber] };
+        if (!id) return;
+        let cancelled = false;
+        (async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const res = await authFetch(`/api/admin/teachers/${id}/`);
+                const payload = await res.json().catch(() => ({}));
+                if (cancelled) return;
+                if (!res.ok) {
+                    setError((payload as { detail?: string }).detail || 'Не удалось загрузить преподавателя');
+                    setTeacher(null);
+                    return;
+                }
+                const row = (payload as { data?: TeacherApi }).data;
+                setTeacher(row || null);
+            } catch {
+                if (!cancelled) {
+                    setError('Нет связи с сервером.');
+                    setTeacher(null);
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-            return g;
-        });
-        setTempProfile({ ...tempProfile, groups: updatedGroups });
-        setGroupNumber('');
-        setIsModalOpen(false);
-    };
-
-    const displayedGroups = isEditing ? tempProfile.groups : profile.groups;
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [id]);
 
     return (
         <div className="admin-page-bg">
             <div className="teacher-profile-card">
-                <button className="back-link" onClick={() => navigate('/admin')}>← Назад</button>
+                <button type="button" className="back-link" onClick={() => navigate('/admin')}>
+                    ← Назад
+                </button>
 
-                <div className="card-content">
-                    <div className="left-side">
-                        <div className="avatar-circle"></div>
-                        <div className="name-info">
-                            <div className="teacher-name">{profile.fullName}</div>
-                            <div className="teacher-role">{profile.role}</div>
-                        </div>
+                {loading && <p className="teacher-admin-muted">Загрузка…</p>}
+                {error && <p className="teacher-admin-err">{error}</p>}
 
-                        <div className="inputs-block">
-                            <div className="input-row">
-                                <span>Логин:</span>
-                                <input
-                                    type="text"
-                                    value={isEditing ? tempProfile.login : profile.login}
-                                    readOnly={!isEditing}
-                                    onChange={e => setTempProfile({...tempProfile, login: e.target.value})}
-                                />
+                {teacher && (
+                    <div className="card-content teacher-admin-simple">
+                        <div className="left-side">
+                            <div className="avatar-circle" aria-hidden />
+                            <div className="name-info">
+                                <div className="teacher-name">{teacher.full_name || teacher.username}</div>
+                                <div className="teacher-role">Преподаватель</div>
                             </div>
-                            <div className="input-row">
-                                <span>Пароль:</span>
-                                <input
-                                    type="text"
-                                    value={isEditing ? tempProfile.password : profile.password}
-                                    readOnly={!isEditing}
-                                    onChange={e => setTempProfile({...tempProfile, password: e.target.value})}
-                                />
+                            <div className="inputs-block">
+                                <div className="input-row">
+                                    <span>Логин:</span>
+                                    <span className="teacher-admin-value">{teacher.username}</span>
+                                </div>
+                                <div className="input-row">
+                                    <span>Email:</span>
+                                    <span className="teacher-admin-value">{teacher.email || '—'}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <div className="right-side">
-                        <div className="table-container">
-                            <div className="table-title">Группы закрепленные за преподавателем</div>
-                            <table className="groups-table">
-                                <thead>
-                                <tr>
-                                    {displayedGroups.map(g => <th key={g.id}>{g.name}</th>)}
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {[0, 1, 2, 3].map(rowIndex => (
-                                    <tr key={rowIndex}>
-                                        {displayedGroups.map(g => (
-                                            <td key={g.id}>
-                                                {g.courses[rowIndex] && (
-                                                    <div className="cell-content">
-                                                        {g.courses[rowIndex]}
-                                                        {isEditing && <span className="del-btn" onClick={() => deleteCourse(g.id, rowIndex)}>×</span>}
-                                                    </div>
-                                                )}
-                                            </td>
+                        <div className="right-side">
+                            <div className="table-container">
+                                <div className="table-title">Группы (закрепление в системе)</div>
+                                {!teacher.groups_taught?.length && (
+                                    <p className="teacher-admin-muted">Группа не назначена.</p>
+                                )}
+                                {!!teacher.groups_taught?.length && (
+                                    <ul className="teacher-admin-group-list">
+                                        {teacher.groups_taught.map((g) => (
+                                            <li key={g.id}>{g.name}</li>
                                         ))}
-                                    </tr>
-                                ))}
-                                </tbody>
-                            </table>
+                                    </ul>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-
-                <div className="bottom-buttons">
-                    <button className="action-btn" onClick={() => navigate('/admin')}>Удалить</button>
-                    <button className="action-btn" onClick={() => {
-                        setIsEditing(!isEditing);
-                        if (isEditing) setTempProfile(profile);
-                    }}>
-                        {isEditing ? 'Отмена' : 'Редактировать'}
-                    </button>
-                    <div className="spacer"></div>
-                    <button className="action-btn" onClick={() => setIsModalOpen(true)}>Назначить группу</button>
-                    <button className="action-btn" onClick={handleSave}>Сохранить</button>
-                </div>
+                )}
             </div>
-
-            {isModalOpen && (
-                <div className="modal-overlay">
-                    <div className="modal-box">
-                        <h3>Добавить группу</h3>
-                        <select value={selectedSpecialty} onChange={(e) => setSelectedSpecialty(e.target.value)}>
-                            <option value="ИСПк">ИСПк</option>
-                            <option value="Фк">Фк</option>
-                            <option value="Рк">Рк</option>
-                            <option value="Зк">Зк</option>
-                        </select>
-                        <input
-                            placeholder="Номер"
-                            value={groupNumber}
-                            onChange={(e) => setGroupNumber(e.target.value)}
-                        />
-                        <div className="modal-btns">
-                            <button onClick={() => setIsModalOpen(false)}>Отмена</button>
-                            <button onClick={submitNewGroup}>ОК</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
 
-export default TeacherProfilePage;
+export default TeacherProfilePageForAdmin;

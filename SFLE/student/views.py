@@ -1,11 +1,16 @@
-from rest_framework.decorators import api_view
+from django.db.models import Prefetch
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from users.models import User, Theme, Test, Question, AnswerOption, SelfStudyTheme, Task, Attendance, TestResult
+from users.models import User, Theme, Theory, Material, Test, Question, AnswerOption, Task, Attendance, TestResult
+from users.major_labels import major_display_label
 from .serializers import (
     StudentProfileSerializer, ThemeListSerializer, ThemeDetailSerializer,
-    TestSerializer, AttendanceSerializer, SelfStudySerializer, DashboardSerializer
+    TestSerializer, AttendanceSerializer, DashboardSerializer,
+    TheoryLearningTreeSerializer, ThemeCatalogSerializer,
+    ThemeCommonSelfStudySerializer,
 )
 
 
@@ -290,13 +295,39 @@ def get_progress(request):
         }
     })
 
-#самоподготовка
 @api_view(['GET'])
-def get_self_study(request):
-    materials = SelfStudyTheme.objects.all().select_related('theory')
-    serializer = SelfStudySerializer(materials, many=True)
-    
+@permission_classes([IsAuthenticated])
+def get_learning_materials(request):
+    """Темы с материалами: для студента — по группе (специальность + курс); иначе все с привязкой."""
+    user = request.user
+    qs = Theme.objects.filter(major_id__isnull=False, course_id__isnull=False)
+    ctx = None
+    if getattr(user, 'group', None) and user.group_id:
+        g = user.group
+        qs = qs.filter(major_id=g.major_id, course_id=g.course_id)
+        ctx = {
+            'major_name': major_display_label(g.major_id) if g.major_id else None,
+            'course_number': g.course.number if g.course_id else None,
+        }
+    themes = qs.prefetch_related(
+        Prefetch('materials', queryset=Material.objects.order_by('id')),
+    ).order_by('id')
     return Response({
         'status': 'success',
-        'data': serializer.data
+        'context': ctx,
+        'data': ThemeCatalogSerializer(themes, many=True).data,
+    })
+
+
+#самоподготовка (общие темы из `theme` без major/course)
+@api_view(['GET'])
+def get_self_study(request):
+    qs = (
+        Theme.objects.filter(major__isnull=True, course__isnull=True)
+        .select_related('theory')
+        .order_by('id')
+    )
+    return Response({
+        'status': 'success',
+        'data': ThemeCommonSelfStudySerializer(qs, many=True).data,
     })

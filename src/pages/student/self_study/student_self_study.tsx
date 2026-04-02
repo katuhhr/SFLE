@@ -1,64 +1,103 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Folder } from 'lucide-react';
+import { apiUrl } from '../../../config';
 import './student_self_study.css';
 
+interface SelfStudyRow {
+    id: number;
+    title: string;
+    content: string;
+}
+
 const StudentSelfStudy: React.FC = () => {
-    const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+    const [topics, setTopics] = useState<SelfStudyRow[]>([]);
+    const [selectedTopic, setSelectedTopic] = useState<SelfStudyRow | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    // Пример списка тем для главного экрана
-    const topics = [
-        "Тема №1 Неправильные глаголы",
-        "Тема №2 Времена Present",
-        "Тема №3 Модальные глаголы"
-    ];
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(apiUrl('/api/student/self-study/'), {
+                headers: { Accept: 'application/json' },
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setError((payload as { detail?: string }).detail || 'Не удалось загрузить темы');
+                setTopics([]);
+                return;
+            }
+            setTopics((payload as { data?: SelfStudyRow[] }).data || []);
+        } catch {
+            setError('Нет связи с сервером.');
+            setTopics([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
-    // Пример контента. Если строка пустая — лист будет чистым.
-    const topicContent = "";
-    // const topicContent = "Здесь будет текст лекции, который закинет преподаватель...";
+    useEffect(() => {
+        void load();
+    }, [load]);
 
-    // Экран просмотра конкретной темы (Второй макет — чистый лист)
     if (selectedTopic) {
         return (
             <div className="student-self-study-view">
                 <main className="topic-full-sheet">
                     <header className="topic-sheet-header">
-                        <button className="back-arrow-btn" onClick={() => setSelectedTopic(null)}>
+                        <button
+                            type="button"
+                            className="back-arrow-btn"
+                            onClick={() => setSelectedTopic(null)}
+                            aria-label="Назад к списку"
+                        >
                             <ArrowLeft size={22} color="#111827" />
                         </button>
-                        <div className="topic-title-badge">
-                            {selectedTopic}
-                        </div>
+                        <div className="topic-title-badge">{selectedTopic.title}</div>
                     </header>
 
-                    {/* Контентная область — теперь это просто чистый текст */}
                     <div className="topic-sheet-content">
-                        {topicContent && (
-                            <div className="material-text-content">
-                                {topicContent}
-                            </div>
+                        {selectedTopic.content ? (
+                            <div className="material-text-content">{selectedTopic.content}</div>
+                        ) : (
+                            <p className="study-self-empty">Текст темы в базе не задан.</p>
                         )}
-                        {/* Если topicContent пустой, здесь просто белый фон листа */}
                     </div>
                 </main>
             </div>
         );
     }
 
-    // Главный экран списка тем
     return (
         <div className="student-self-study-view">
             <div className="study-main-card">
                 <h1 className="study-page-title">Самоподготовка</h1>
+                <p className="study-page-subtitle">Общие темы из учебного каталога</p>
+
+                {loading && <p className="study-self-status">Загрузка…</p>}
+                {error && <p className="study-self-error">{error}</p>}
+                {!loading && !error && topics.length === 0 && (
+                    <p className="study-self-status">Общих тем пока нет.</p>
+                )}
 
                 <div className="study-topics-grid">
-                    {topics.map((topic, index) => (
+                    {topics.map((topic) => (
                         <div
-                            key={index}
+                            key={topic.id}
+                            role="button"
+                            tabIndex={0}
                             className="study-topic-pill"
                             onClick={() => setSelectedTopic(topic)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSelectedTopic(topic);
+                                }
+                            }}
                         >
                             <Folder size={20} color="#1E3A8A" strokeWidth={1.5} />
-                            <span className="topic-pill-text">{topic}</span>
+                            <span className="topic-pill-text">{topic.title}</span>
                         </div>
                     ))}
                 </div>

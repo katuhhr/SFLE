@@ -2,6 +2,19 @@
     width: 100%;
 }
 
+.schedule-status {
+    margin-bottom: 12px;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.schedule-status-err {
+    color: #b91c1c;
+    background: #fef2f2;
+    padding: 10px 14px;
+    border-radius: 10px;
+}
+
 .schedule-header {
     display: flex;
     justify-content: space-between;
@@ -91,6 +104,35 @@
 
 .info-field {
     flex: 1;
+}
+
+.lesson-entry-row {
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.lesson-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: 8px;
+    padding: 6px 8px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+}
+
+.is-today .lesson-select {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.room-field {
+    width: 4.5rem;
+    flex: 0 0 auto;
 }
 
 .remove-lesson-btn {

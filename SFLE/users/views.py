@@ -3,6 +3,8 @@ from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from users.models import Group, User, Request
 
@@ -100,3 +102,19 @@ def me(request):
             'server_date': timezone.localdate().isoformat(),
         }
     )
+
+
+class EmailAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """В поле `username` можно передать email — ищем пользователя и подставляем `username`."""
+
+    def validate(self, attrs):
+        login = attrs.get('username') or ''
+        if login and '@' in str(login):
+            u = User.objects.filter(email__iexact=str(login).strip()).first()
+            if u is not None:
+                attrs['username'] = u.username
+        return super().validate(attrs)
+
+
+class EmailAwareTokenObtainPairView(TokenObtainPairView):
+    serializer_class = EmailAwareTokenObtainPairSerializer

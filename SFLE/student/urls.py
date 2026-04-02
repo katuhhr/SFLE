@@ -12,4 +12,5 @@ urlpatterns = [
     path('themes/<int:theme_id>/test/submit/', views.submit_test, name='submit_test'),
     path('progress/', views.get_progress, name='progress'),
     path('self-study/', views.get_self_study, name='self_study'),
+    path('learning-materials/', views.get_learning_materials, name='learning_materials'),
 ]

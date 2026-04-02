@@ -96,7 +96,14 @@ const Login: React.FC = () => {
                 return;
             }
 
-            navigate(me.role === 'teacher' ? '/teacher/schedule' : '/student/debts');
+            const role = (me as { role?: string }).role;
+            if (role === 'admin') {
+                navigate('/admin');
+            } else if (role === 'teacher') {
+                navigate('/teacher/schedule');
+            } else {
+                navigate('/student/debts');
+            }
         } catch {
             setMessage({ type: 'err', text: 'Нет связи с сервером. Запущен ли бэкенд (порт 8000)?' });
         } finally {

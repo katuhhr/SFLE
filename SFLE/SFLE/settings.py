@@ -14,7 +14,6 @@ ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '[::1]']
 
 # 3. Приложения
 INSTALLED_APPS = [
-    'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -77,6 +76,11 @@ DATABASES = {
 # 6. Пользователь и валидация
 AUTH_USER_MODEL = 'users.User'
 
+AUTHENTICATION_BACKENDS = [
+    'users.backends.EmailOrUsernameBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 6}},
@@ -105,6 +109,10 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://[::1]:3000",  # Chrome часто открывает React именно с этим Origin
+    "http://[::1]:3001",
 ]
 CORS_ALLOW_CREDENTIALS = True
 

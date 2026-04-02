@@ -173,3 +173,36 @@
 .modal-btns {
     display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;
 }
+
+.teacher-admin-muted {
+    color: #64748b;
+    font-size: 15px;
+    margin: 12px 0;
+}
+
+.teacher-admin-err {
+    color: #b91c1c;
+    font-size: 14px;
+    margin: 12px 0;
+}
+
+.teacher-admin-simple .input-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.teacher-admin-value {
+    font-weight: 600;
+    color: #111827;
+    word-break: break-all;
+}
+
+.teacher-admin-group-list {
+    margin: 12px 0 0;
+    padding-left: 20px;
+    color: #334155;
+    line-height: 1.7;
+}

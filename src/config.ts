@@ -1,10 +1,13 @@
 /**
  * Базовый URL бэкенда.
- * В разработке оставьте пустым: запросы идут на тот же хост, что и React (:3000),
- * а create-react-app проксирует их на Django (см. "proxy" в package.json).
- * Для сборки без proxy: REACT_APP_API_ORIGIN=http://127.0.0.1:8000
+ * В development по умолчанию идём напрямую на Django (:8000): так надёжнее, чем
+ * полагаться только на "proxy" в package.json (он не работает для preview/другого порта).
+ * Переопределение: REACT_APP_API_ORIGIN=...
  */
-const origin = (process.env.REACT_APP_API_ORIGIN ?? '').replace(/\/$/, '');
+const defaultDevOrigin =
+    process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8000' : '';
+
+const origin = (process.env.REACT_APP_API_ORIGIN ?? defaultDevOrigin).replace(/\/$/, '');
 
 export function apiUrl(path: string): string {
     const p = path.startsWith('/') ? path : `/${path}`;
