@@ -1,9 +1,13 @@
 .admin-page-container {
     display: flex;
     width: 100%;
-    min-height: 100vh;
-    padding: 20px 0;
+    max-width: 100%;
+    flex: 1;
+    min-height: 100dvh;
+    padding: clamp(12px, 2vw, 20px) 0;
     background-color: #f8fbff;
+    overflow-x: hidden;
+    box-sizing: border-box;
 }
 
 .admin-sidebar {
@@ -73,7 +77,8 @@
 
 .admin-content-area {
     flex: 1;
-    padding: 0 40px;
+    min-width: 0;
+    padding: 0 clamp(16px, 3vw, 40px);
     display: flex;
     flex-direction: column;
     gap: 25px;

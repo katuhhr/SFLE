@@ -1,16 +1,46 @@
 from django.contrib.auth.hashers import make_password
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-<<<<<<< HEAD
-=======
 from rest_framework import serializers
->>>>>>> 87dd4e194f5bcdb7cf0f440e13f6e51ad0596bf9
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from users.models import Group, User, Request
+from users.models import Group, User, Request, UserTeachingGroup
+
+
+def _sync_teacher_group_links_for_group(group) -> None:
+    """Добавляет строки в user_teaching_groups для преподов с legacy group_id = эта группа.
+
+    Так заявки студентов видны и тем, у кого в БД заполнено только поле user.group_id
+    (без строк в M2M), и список совпадает с логикой «кто ведёт группу» в админке.
+    """
+    if group is None:
+        return
+    teacher_ids = User.objects.filter(role__iexact='teacher', group_id=group.id).values_list(
+        'id', flat=True
+    )
+    for tid in teacher_ids:
+        UserTeachingGroup.objects.get_or_create(user_id=tid, group_id=group.id)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def register_group_options(request):
+    """Список групп для регистрации студента (без авторизации)."""
+    qs = Group.objects.select_related('major', 'course').order_by('major_id', 'course_id', 'name')
+    data = [
+        {
+            'id': g.id,
+            'name': g.name,
+            'label': f'{g.name} — {g.major.name}, {g.course.number} курс',
+        }
+        for g in qs
+    ]
+    return Response({'status': 'success', 'data': data})
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -47,13 +77,16 @@ class EmailTokenObtainPairView(TokenObtainPairView):
 @permission_classes([AllowAny])
 def register(request):
     """Регистрация студента/преподавателя.
-    Для студента создаём заявку на подтверждение преподавателем его группы (user.is_active = False пока не подтверждено).
+    Студент: создаётся неактивный user с выбранной группой и заявка преподавателю;
+    после одобрения преподаватель активирует аккаунт (вход, ведомость и т.д.).
+    Преподаватель: неактивен до одобрения администратором.
     """
     email = (request.data.get('email') or '').strip().lower()
     password = request.data.get('password') or ''
     full_name = (request.data.get('full_name') or '').strip()
     role = (request.data.get('role') or 'student').strip().lower()
     group_name = (request.data.get('group_name') or '').strip()
+    raw_group_id = request.data.get('group_id')
 
     if not email or not password:
         return Response({'detail': 'Укажите email и пароль.'}, status=400)
@@ -73,44 +106,78 @@ def register(request):
     django_role = 'teacher' if role == 'teacher' else 'student'
     group = None
     if django_role == 'student':
-        if not group_name:
-            return Response({'detail': 'Укажите номер группы.'}, status=400)
-        group = Group.objects.filter(name__iexact=group_name).first()
-        if not group:
-            return Response(
-                {
-                    'detail': 'Группа с таким названием не найдена в базе. '
-                    'Проверьте написание или обратитесь к администратору.',
-                },
-                status=400,
-            )
+        group = None
+        if raw_group_id is not None and str(raw_group_id).strip() != '':
+            try:
+                gid = int(raw_group_id)
+            except (TypeError, ValueError):
+                return Response({'detail': 'Некорректный идентификатор группы.'}, status=400)
+            group = Group.objects.filter(id=gid).first()
+            if not group:
+                return Response({'detail': 'Выбранная группа не найдена. Обновите страницу и выберите снова.'}, status=400)
+        elif group_name:
+            group = Group.objects.filter(name__iexact=group_name).first()
+            if not group:
+                return Response(
+                    {
+                        'detail': 'Группа с таким названием не найдена в базе. '
+                        'Проверьте написание или обратитесь к администратору.',
+                    },
+                    status=400,
+                )
+        else:
+            return Response({'detail': 'Выберите группу из списка.'}, status=400)
 
-    # Студент до подтверждения преподавателем будет неактивен
-    is_active = True if django_role == 'teacher' else False
+    is_active = False
 
-    user = User(
-        username=email,
-        email=email,
-        lastname=lastname,
-        firstname=firstname,
-        role=django_role,
-        group=group,
-        is_active=is_active,
-    )
-    user.password = make_password(password)
-    user.save()
-
-    # Для студента создаём заявку преподавателю его группы
-    if django_role == 'student':
-        # type можно потом расширять; сейчас достаточно уникального значения
-        Request.objects.create(user=user, type='student_registration_confirm')
+    try:
+        with transaction.atomic():
+            if django_role == 'student':
+                user = User(
+                    username=email,
+                    email=email,
+                    last_name=lastname,
+                    first_name=firstname,
+                    role='student',
+                    group=group,
+                    is_active=False,
+                )
+                user.password = make_password(password)
+                user.full_clean()
+                user.save()
+                Request.objects.create(user=user, type='student_registration_confirm')
+                _sync_teacher_group_links_for_group(group)
+            else:
+                user = User(
+                    username=email,
+                    email=email,
+                    last_name=lastname,
+                    first_name=firstname,
+                    role=django_role,
+                    group=None,
+                    is_active=is_active,
+                )
+                user.password = make_password(password)
+                user.full_clean()
+                user.save()
+                Request.objects.create(user=user, type='teacher_registration_confirm')
+    except ValidationError as e:
+        msgs = []
+        if hasattr(e, 'message_dict') and e.message_dict:
+            for v in e.message_dict.values():
+                msgs.extend(v if isinstance(v, list) else [str(v)])
+        else:
+            msgs = list(getattr(e, 'messages', []) or [str(e)])
+        return Response({'detail': ' '.join(str(m) for m in msgs) or 'Проверьте введённые данные.'}, status=400)
+    except IntegrityError:
+        return Response({'detail': 'Пользователь с таким email уже зарегистрирован.'}, status=400)
 
     return Response(
         {
             'status': 'success',
             'message': 'Регистрация прошла успешно.',
             'role': django_role,
-            'pending': django_role == 'student',
+            'pending': True,
         },
         status=201,
     )
@@ -129,7 +196,7 @@ def me(request):
             'login': u.username,
             'firstname': u.firstname,
             'lastname': u.lastname,
-            'full_name': f'{u.firstname} {u.lastname}'.strip(),
+            'full_name': f'{u.lastname} {u.firstname}'.strip(),
             'group': group_name,
             'is_active': u.is_active,
             # время ответа — полезно для фронта/отладки

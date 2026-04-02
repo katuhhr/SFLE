@@ -30,7 +30,15 @@ class User(AbstractUser):
     
     group = models.ForeignKey('Group', on_delete=models.SET_NULL, null=True, blank=True, 
                               related_name='students', verbose_name='Группа')
-    
+    teaching_groups = models.ManyToManyField(
+        'Group',
+        through='UserTeachingGroup',
+        through_fields=('user', 'group'),
+        blank=True,
+        related_name='assigned_teachers',
+        verbose_name='Группы преподавателя',
+    )
+
     class Meta:
         db_table = 'user'
         verbose_name = 'Пользователь'
@@ -84,6 +92,29 @@ class Group(models.Model):
     
     def __str__(self):
         return self.name
+
+
+class UserTeachingGroup(models.Model):
+    """Закрепление преподавателя за учебными группами (отдельная таблица user_teaching_groups)."""
+
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        related_name='teaching_group_links',
+        verbose_name='Преподаватель',
+    )
+    group = models.ForeignKey(
+        'Group',
+        on_delete=models.CASCADE,
+        related_name='teacher_assignment_links',
+        verbose_name='Группа',
+    )
+
+    class Meta:
+        db_table = 'user_teaching_groups'
+        unique_together = [['user', 'group']]
+        verbose_name = 'Группа преподавателя'
+        verbose_name_plural = 'Группы преподавателей'
 
 
 class GradebookSheet(models.Model):
@@ -266,16 +297,38 @@ class StudentAnswer(models.Model):
 
 class Request(models.Model):
     id = models.AutoField(primary_key=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='requests', verbose_name='Пользователь')
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='requests',
+        verbose_name='Пользователь',
+        null=True,
+        blank=True,
+    )
     type = models.CharField(max_length=100, verbose_name='Тип заявки')
-    
+    # Старые заявки без user (до одобрения); новый поток — неактивный user + эта заявка.
+    pending_email = models.EmailField(blank=True, null=True, verbose_name='Email заявки')
+    pending_password = models.CharField(max_length=200, blank=True, verbose_name='Пароль (хэш)')
+    pending_firstname = models.CharField(max_length=100, blank=True, verbose_name='Имя (заявка)')
+    pending_lastname = models.CharField(max_length=100, blank=True, verbose_name='Фамилия (заявка)')
+    pending_group = models.ForeignKey(
+        'Group',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Группа (заявка)',
+    )
+
     class Meta:
         db_table = 'request'
         verbose_name = 'Заявка'
         verbose_name_plural = 'Заявки'
-    
+
     def __str__(self):
-        return f"{self.user} - {self.type}"
+        if self.user_id:
+            return f'{self.user} - {self.type}'
+        return f'{self.pending_email or "?"} (ожидает) - {self.type}'
 
 
 class Attendance(models.Model):

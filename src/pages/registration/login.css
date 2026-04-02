@@ -1,12 +1,22 @@
+/* Только главная (вход): на весь экран, фон без «полосы» снизу — не зависит от flex-цепочки app-container */
 .auth-full-page {
-    width: 100vw;
-    height: 100vh;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
     background-repeat: no-repeat;
     background-position: center center;
     background-size: cover;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: clamp(16px, 4vw, 32px);
+    box-sizing: border-box;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .auth-card {
@@ -126,6 +136,29 @@
     border: 1px solid #cbd5e1;
     border-radius: 10px;
     margin-bottom: 20px;
+}
+
+.group-select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: 15px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.group-select:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.groups-load-err {
+    color: #b91c1c;
+    font-size: 14px;
+    margin: 0 0 12px;
+    line-height: 1.4;
 }
 
 .auth-submit-btn {

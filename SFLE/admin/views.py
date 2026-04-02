@@ -2,8 +2,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from datetime import timedelta, datetime as dt
-from django.db import transaction
-from django.db.models import Prefetch, Min
+from django.db import IntegrityError, transaction
+from django.db.models import Prefetch, Min, Q
 from django.db.utils import DatabaseError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -19,6 +19,7 @@ from users.models import (
     Major,
     Course,
     GradebookSheet,
+    UserTeachingGroup,
 )
 from users.major_labels import majors_for_learning_catalog, major_theory_bundle_label
 from student.serializers import (
@@ -29,9 +30,42 @@ from student.serializers import (
 )
 from .serializers import (
     ApplicationSerializer, TeacherSerializer, GroupSerializer,
-    GroupCreateSerializer, TeacherGroupUpdateSerializer, ScheduleEntrySerializer,
-    GroupOptionSerializer,
+    GroupCreateSerializer, MajorCreateSerializer, TeacherGroupUpdateSerializer,
+    ScheduleEntrySerializer, GroupOptionSerializer,
 )
+
+
+def _is_teacher_role(user) -> bool:
+    return (getattr(user, 'role', None) or '').lower() == 'teacher'
+
+
+def _teacher_assigned_group_ids(user) -> set:
+    """ID учебных групп: таблица user_teaching_groups + legacy user.group_id."""
+    if not _is_teacher_role(user):
+        return set()
+    ids = set(
+        UserTeachingGroup.objects.filter(user_id=user.pk).values_list('group_id', flat=True)
+    )
+    gid = getattr(user, 'group_id', None)
+    if gid:
+        ids.add(gid)
+    return ids
+
+
+def _teacher_assigned_group_names(user) -> set:
+    gids = _teacher_assigned_group_ids(user)
+    if not gids:
+        return set()
+    return set(Group.objects.filter(id__in=gids).values_list('name', flat=True))
+
+
+def _teacher_can_access_major_course(user, major_id, course_id) -> bool:
+    if not _is_teacher_role(user):
+        return False
+    gids = _teacher_assigned_group_ids(user)
+    if not gids:
+        return False
+    return Group.objects.filter(id__in=gids, major_id=major_id, course_id=course_id).exists()
 
 
 def _admin_only(user) -> bool:
@@ -44,7 +78,11 @@ def _admin_only(user) -> bool:
 def get_applications(request):
     if not _admin_only(request.user):
         return Response({'detail': 'Только для администратора'}, status=403)
-    applications = Request.objects.select_related('user').all().order_by('-id')
+    applications = (
+        Request.objects.select_related('user')
+        .exclude(type='student_registration_confirm')
+        .order_by('-id')
+    )
     serializer = ApplicationSerializer(applications, many=True)
 
     return Response({
@@ -73,29 +111,54 @@ def approve_application(request, app_id):
     if not _admin_only(request.user):
         return Response({'detail': 'Только для администратора'}, status=403)
     application = get_object_or_404(Request, id=app_id)
-    #получаем данные из заявки (нужно будет расширить модель Request)
-    #пока используем существующего пользователя
     user = application.user
-    
+    msg = 'Заявка одобрена.'
+
+    if application.type == 'student_registration_confirm' and user is None:
+        if not application.pending_email or not application.pending_password or not application.pending_group_id:
+            return Response({'detail': 'Неполные данные заявки студента'}, status=400)
+        if User.objects.filter(username__iexact=application.pending_email).exists():
+            application.delete()
+            return Response({'detail': 'Пользователь с таким email уже есть. Заявка удалена.'}, status=400)
+        new_user = User(
+            username=application.pending_email,
+            email=application.pending_email,
+            first_name=application.pending_firstname or '',
+            last_name=application.pending_lastname or '',
+            role='student',
+            group=application.pending_group,
+            is_active=True,
+        )
+        new_user.password = application.pending_password
+        new_user.save()
+        application.delete()
+        return Response(
+            {
+                'status': 'success',
+                'message': f'Заявка одобрена. Студент {new_user.username} создан.',
+            },
+        )
+
     if user:
         if application.type == 'student_registration_confirm':
-            # Подтверждение регистрации студента: просто делаем активным
             user.is_active = True
             user.role = 'student'
             user.save()
+            msg = f'Заявка одобрена. Студент {user.username} активирован.'
+        elif application.type == 'teacher_registration_confirm':
+            user.is_active = True
+            user.role = 'teacher'
+            user.save()
+            msg = f'Заявка одобрена. Преподаватель {user.username} активирован.'
         else:
-            # Старое поведение: пользователь становится преподавателем
             user.role = 'teacher'
             user.is_active = True
             user.save()
-    
-    #удаляем заявкуменяем статус
+            msg = f'Заявка одобрена. Пользователь {user.username} теперь преподаватель.'
+
     application.delete()
-    
-    return Response({
-        'status': 'success',
-        'message': f'Заявка одобрена. Пользователь {user.username} теперь преподаватель.'
-    })
+
+    return Response({'status': 'success', 'message': msg})
 
 
 @api_view(['POST'])
@@ -107,9 +170,9 @@ def reject_application(request, app_id):
     reason = request.data.get('reason', 'Причина не указана')
     #сохраняем причину отказа (нужно будет добавить поле в модель Request)
     #пока просто удаляем заявку/пользователя
-    if application.type == 'student_registration_confirm':
-        # Для отклонённой заявки студента удаляем и студента
-        application.user.delete()
+    if application.type in ('student_registration_confirm', 'teacher_registration_confirm'):
+        if application.user_id:
+            application.user.delete()
     application.delete()
     
     return Response({
@@ -124,7 +187,11 @@ def reject_application(request, app_id):
 def get_teachers(request):
     if not _admin_only(request.user):
         return Response({'detail': 'Только для администратора'}, status=403)
-    teachers = User.objects.filter(role='teacher').select_related('group')
+    teachers = (
+        User.objects.filter(role='teacher', is_active=True)
+        .select_related('group')
+        .prefetch_related('teaching_groups')
+    )
     serializer = TeacherSerializer(teachers, many=True)
 
     return Response({
@@ -139,9 +206,10 @@ def get_teacher_detail(request, teacher_id):
     if not _admin_only(request.user):
         return Response({'detail': 'Только для администратора'}, status=403)
     teacher = get_object_or_404(
-        User.objects.select_related('group'),
+        User.objects.select_related('group').prefetch_related('teaching_groups'),
         id=teacher_id,
         role='teacher',
+        is_active=True,
     )
     serializer = TeacherSerializer(teacher)
 
@@ -156,49 +224,57 @@ def get_teacher_detail(request, teacher_id):
 def manage_teacher_groups(request, teacher_id):
     if not _admin_only(request.user):
         return Response({'detail': 'Только для администратора'}, status=403)
-    teacher = get_object_or_404(User, id=teacher_id, role='teacher')
-    
-    if request.method == 'GET':
-        # В вашей схеме БД "закрепление преподавателя" делается через user.group_id
-        groups = Group.objects.filter(id=teacher.group_id) if teacher.group_id else Group.objects.none()
-        serializer = GroupSerializer(groups, many=True)
-        return Response({
-            'status': 'success',
-            'data': serializer.data
-        })
-    
-    elif request.method == 'POST':
-        # Добавляем/обновляем одну группу через teacher.group_id (в БД нет ManyToMany).
-        group_ids = request.data.get('group_ids', [])
-        group = Group.objects.filter(id__in=group_ids).first()
-        teacher.group = group
-        teacher.save()
+    teacher = get_object_or_404(
+        User.objects.prefetch_related('teaching_groups'),
+        id=teacher_id,
+        role='teacher',
+        is_active=True,
+    )
 
-        return Response({
-            'status': 'success',
-            'message': 'Группа преподавателя обновлена.',
-            'data': GroupSerializer(teacher.group and [teacher.group] or [], many=True).data
-        })
-    
-    elif request.method == 'PUT':
-        # заменяем группу преподавателя
+    def _assigned_groups_qs():
+        qs = teacher.teaching_groups.all().order_by('name', 'id')
+        if qs.exists():
+            return qs
+        if teacher.group_id:
+            return Group.objects.filter(id=teacher.group_id).order_by('name', 'id')
+        return Group.objects.none()
+
+    if request.method == 'GET':
+        serializer = GroupSerializer(_assigned_groups_qs(), many=True)
+        return Response({'status': 'success', 'data': serializer.data})
+
+    if request.method in ('POST', 'PUT'):
         serializer = TeacherGroupUpdateSerializer(data=request.data)
-        
         if not serializer.is_valid():
-            return Response({
-                'status': 'error',
-                'errors': serializer.errors
-            }, status=400)
-        
+            return Response(
+                {
+                    'detail': 'Некорректные данные (проверьте поле group_ids — массив чисел).',
+                    'errors': serializer.errors,
+                },
+                status=400,
+            )
         group_ids = serializer.validated_data['group_ids']
-        group = Group.objects.filter(id__in=group_ids).first()
-        teacher.group = group
-        teacher.save()
-        
+        want = list(dict.fromkeys(group_ids))
+        if any(x is None or x <= 0 for x in want):
+            return Response({'detail': 'В group_ids допустимы только положительные id групп.'}, status=400)
+        found = list(Group.objects.filter(id__in=want).order_by('id'))
+        if len(found) != len(want):
+            return Response({'detail': 'Указаны несуществующие id групп'}, status=400)
+        try:
+            teacher.teaching_groups.set(found)
+        except (IntegrityError, DatabaseError) as exc:
+            return Response(
+                {'detail': f'Ошибка базы при сохранении закрепления: {exc}'},
+                status=500,
+            )
+        # Оставляем «основную» группу для legacy-кода; M2M — полный список закреплений.
+        teacher.group_id = found[0].id if found else None
+        teacher.save(update_fields=['group_id'])
+        out = GroupSerializer(teacher.teaching_groups.all().order_by('name', 'id'), many=True)
         return Response({
             'status': 'success',
-            'message': 'Группа преподавателя обновлена.',
-            'data': GroupSerializer(teacher.group and [teacher.group] or [], many=True).data
+            'message': 'Закрепление групп обновлено.',
+            'data': out.data,
         })
 
 
@@ -210,10 +286,41 @@ def get_groups(request):
         return Response({'detail': 'Только для администратора'}, status=403)
     groups = Group.objects.all().select_related('course', 'major')
     serializer = GroupSerializer(groups, many=True)
-    
+
     return Response({
         'status': 'success',
-        'data': serializer.data
+        'data': serializer.data,
+        'major_order': [
+            {'id': row['id'], 'label': row['label']}
+            for row in majors_for_learning_catalog()
+        ],
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_major(request):
+    if not _admin_only(request.user):
+        return Response({'detail': 'Только для администратора'}, status=403)
+    serializer = MajorCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'status': 'error', 'errors': serializer.errors}, status=400)
+    major = serializer.save()
+    return Response(
+        {'status': 'success', 'data': {'id': major.id, 'name': major.name}},
+        status=201,
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_courses_list(request):
+    if not _admin_only(request.user):
+        return Response({'detail': 'Только для администратора'}, status=403)
+    rows = Course.objects.values('number').annotate(id=Min('id')).order_by('number')
+    return Response({
+        'status': 'success',
+        'data': [{'id': r['id'], 'number': r['number']} for r in rows],
     })
 
 
@@ -244,31 +351,52 @@ def create_group(request):
 def get_teacher_registration_requests(request):
     """Список заявок на подтверждение регистрации для текущего преподавателя."""
     teacher = request.user
-    if teacher.role != 'teacher':
+    if not _is_teacher_role(teacher):
         return Response({'detail': 'Доступ запрещен'}, status=403)
+
+    # Синхронизация legacy user.group_id → user_teaching_groups (если строки ещё нет).
+    if teacher.group_id:
+        UserTeachingGroup.objects.get_or_create(user_id=teacher.pk, group_id=teacher.group_id)
 
     qs = (
         Request.objects.filter(type='student_registration_confirm')
-        .select_related('user', 'user__group')
+        .select_related('user', 'user__group', 'pending_group')
         .order_by('-id')
     )
 
-    # Фильтр по группе преподавателя (в user есть group_id, но в group нет teacher_id).
-    if teacher.group_id:
-        qs = qs.filter(user__group_id=teacher.group_id)
+    gids = _teacher_assigned_group_ids(teacher)
+    if gids:
+        qs = qs.filter(
+            Q(user__isnull=False, user__group_id__in=gids)
+            | Q(user__isnull=True, pending_group_id__in=gids)
+        )
     else:
         qs = qs.none()
 
-    items = [
-        {
-            'id': r.id,
-            'studentName': f'{r.user.first_name} {r.user.last_name}'.strip(),
-            'date': timezone.localdate().strftime('%d.%m.%Y'),
-        }
-        for r in qs
-    ]
+    items = []
+    for r in qs:
+        if r.user_id:
+            name = f'{r.user.first_name} {r.user.last_name}'.strip()
+        else:
+            name = f'{r.pending_lastname} {r.pending_firstname}'.strip()
+        items.append(
+            {
+                'id': r.id,
+                'studentName': name or (r.pending_email or '—'),
+                'date': timezone.localdate().strftime('%d.%m.%Y'),
+            }
+        )
 
-    return Response({'status': 'success', 'data': items})
+    meta = {
+        'has_assigned_groups': bool(gids),
+        'hint': None
+        if gids
+        else (
+            'У вас не закреплены учебные группы — заявки студентов не отображаются. '
+            'Обратитесь к администратору, чтобы закрепить за вами нужные группы.'
+        ),
+    }
+    return Response({'status': 'success', 'data': items, 'meta': meta})
 
 
 @api_view(['POST'])
@@ -276,16 +404,44 @@ def get_teacher_registration_requests(request):
 def approve_teacher_registration_request(request, req_id: int):
     """Принять подтверждение студента."""
     teacher = request.user
-    if teacher.role != 'teacher':
+    if not _is_teacher_role(teacher):
         return Response({'detail': 'Доступ запрещен'}, status=403)
 
     application = get_object_or_404(Request, id=req_id, type='student_registration_confirm')
-    if not teacher.group_id or not application.user.group_id or application.user.group_id != teacher.group_id:
-        return Response({'detail': 'Заявка не принадлежит вашему преподавателю'}, status=403)
+    gids = _teacher_assigned_group_ids(teacher)
 
-    student = application.user
-    student.is_active = True
-    student.save()
+    if application.user_id:
+        if not application.user.group_id or application.user.group_id not in gids:
+            return Response({'detail': 'Заявка не принадлежит вашему преподавателю'}, status=403)
+        student = application.user
+        student.is_active = True
+        student.save()
+    else:
+        if (
+            not application.pending_group_id
+            or application.pending_group_id not in gids
+            or not application.pending_email
+            or not application.pending_password
+        ):
+            return Response({'detail': 'Заявка не принадлежит вашему преподавателю'}, status=403)
+        if User.objects.filter(username__iexact=application.pending_email).exists():
+            application.delete()
+            return Response(
+                {'detail': 'Этот email уже зарегистрирован. Заявка снята.'},
+                status=400,
+            )
+        student = User(
+            username=application.pending_email,
+            email=application.pending_email,
+            first_name=application.pending_firstname or '',
+            last_name=application.pending_lastname or '',
+            role='student',
+            group=application.pending_group,
+            is_active=True,
+        )
+        student.password = application.pending_password
+        student.save()
+
     application.delete()
 
     return Response({'status': 'success', 'message': 'Заявка принята.'})
@@ -296,17 +452,22 @@ def approve_teacher_registration_request(request, req_id: int):
 def reject_teacher_registration_request(request, req_id: int):
     """Отклонить подтверждение студента."""
     teacher = request.user
-    if teacher.role != 'teacher':
+    if not _is_teacher_role(teacher):
         return Response({'detail': 'Доступ запрещен'}, status=403)
 
     application = get_object_or_404(Request, id=req_id, type='student_registration_confirm')
-    if not teacher.group_id or not application.user.group_id or application.user.group_id != teacher.group_id:
-        return Response({'detail': 'Заявка не принадлежит вашему преподавателю'}, status=403)
+    gids = _teacher_assigned_group_ids(teacher)
 
-    # Удаляем студента и заявку (для свежей регистрации без зависимостей достаточно).
-    student = application.user
-    application.delete()
-    student.delete()
+    if application.user_id:
+        if not application.user.group_id or application.user.group_id not in gids:
+            return Response({'detail': 'Заявка не принадлежит вашему преподавателю'}, status=403)
+        student = application.user
+        application.delete()
+        student.delete()
+    else:
+        if not application.pending_group_id or application.pending_group_id not in gids:
+            return Response({'detail': 'Заявка не принадлежит вашему преподавателю'}, status=403)
+        application.delete()
 
     return Response({'status': 'success', 'message': 'Заявка отклонена.'})
 
@@ -328,10 +489,11 @@ def _canonical_group_name(raw: str):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def teacher_group_options(request):
-    """Все группы из БД для выбора в расписании."""
+    """Группы из БД для расписания — только закреплённые за преподавателем."""
     if getattr(request.user, 'role', None) != 'teacher':
         return Response({'detail': 'Только для преподавателя'}, status=403)
-    qs = Group.objects.all().order_by('name')
+    gids = _teacher_assigned_group_ids(request.user)
+    qs = Group.objects.filter(id__in=gids).order_by('name') if gids else Group.objects.none()
     return Response({'status': 'success', 'data': GroupOptionSerializer(qs, many=True).data})
 
 
@@ -371,9 +533,14 @@ def teacher_schedule_week(request):
             return Response({'detail': 'Некорректная week_start'}, status=400)
         we = ws + timedelta(days=5)  # пн–сб
 
+        names = _teacher_assigned_group_names(user)
         qs = Schedule.objects.filter(lesson_date__gte=ws, lesson_date__lte=we).order_by(
             'lesson_date', 'lesson_time', 'id',
         )
+        if names:
+            qs = qs.filter(group_name__in=names)
+        else:
+            qs = qs.none()
         return Response({
             'status': 'success',
             'week_start': ws.isoformat(),
@@ -387,6 +554,13 @@ def teacher_schedule_week(request):
     lessons = request.data.get('lessons')
     if not isinstance(lessons, list):
         return Response({'detail': 'lessons — массив записей расписания'}, status=400)
+
+    allowed_names = _teacher_assigned_group_names(user)
+    if not allowed_names:
+        return Response(
+            {'detail': 'Нельзя сохранить расписание: администратор не закрепил за вами учебные группы.'},
+            status=403,
+        )
 
     normalized = []
     for item in lessons:
@@ -406,6 +580,11 @@ def teacher_schedule_week(request):
                     'detail': f'Группа «{raw_group or "—"}» не найдена в базе (таблица group). Выберите из списка.',
                 },
                 status=400,
+            )
+        if gn not in allowed_names:
+            return Response(
+                {'detail': f'Группа «{gn}» не входит в ваши закреплённые группы.'},
+                status=403,
             )
         pk = item.get('id')
         if pk is not None and str(pk).isdigit():
@@ -493,7 +672,14 @@ def learning_catalog(request):
     )
     course_objs = [{'id': r['id'], 'number': r['number']} for r in courses_unique]
     label_by_major = {row['id']: row['label'] for row in majors_for_learning_catalog()}
-    groups = Group.objects.select_related('major').order_by('name', 'id')
+    gids = _teacher_assigned_group_ids(request.user)
+    groups = (
+        Group.objects.select_related('major', 'course')
+        .filter(id__in=gids)
+        .order_by('name', 'id')
+        if gids
+        else Group.objects.none()
+    )
     payload = []
     for g in groups:
         major = g.major
@@ -506,6 +692,8 @@ def learning_catalog(request):
             'name': g.name,
             'major_id': mid,
             'major_label': label,
+            'course_id': g.course_id,
+            'course_number': g.course.number if g.course_id else None,
             'courses': list(course_objs),
         })
     return Response({'status': 'success', 'data': payload})
@@ -521,8 +709,15 @@ def learning_topics(request):
     cid = request.query_params.get('course_id')
     if not mid or not cid:
         return Response({'detail': 'Укажите major_id и course_id'}, status=400)
+    try:
+        mid_int = int(mid)
+        cid_int = int(cid)
+    except (TypeError, ValueError):
+        return Response({'detail': 'Некорректные major_id или course_id'}, status=400)
+    if not _teacher_can_access_major_course(request.user, mid_int, cid_int):
+        return Response({'detail': 'Нет доступа к выбранной специальности или курсу'}, status=403)
     themes = (
-        Theme.objects.filter(major_id=mid, course_id=cid)
+        Theme.objects.filter(major_id=mid_int, course_id=cid_int)
         .prefetch_related(Prefetch('materials', queryset=Material.objects.order_by('id')))
         .order_by('id')
     )
@@ -594,6 +789,8 @@ def learning_theme_create(request):
     if major_id and course_id:
         major = get_object_or_404(Major, pk=major_id)
         course = get_object_or_404(Course, pk=course_id)
+        if not _teacher_can_access_major_course(request.user, major.id, course.id):
+            return Response({'detail': 'Нет доступа к этой специальности или курсу'}, status=403)
         theory = _theory_for_major_course(major, course)
         theme = Theme.objects.create(
             theory=theory, name=name, major=major, course=course,
@@ -629,6 +826,9 @@ def learning_theme_detail(request, pk: int):
     if not _teacher_only(request.user):
         return Response({'detail': 'Только для преподавателя'}, status=403)
     theme = get_object_or_404(Theme, pk=pk)
+    if theme.major_id and theme.course_id:
+        if not _teacher_can_access_major_course(request.user, theme.major_id, theme.course_id):
+            return Response({'detail': 'Нет доступа к этой теме'}, status=403)
     if request.method == 'DELETE':
         theme.delete()
         return Response({'status': 'success', 'message': 'Тема удалена'})
@@ -650,6 +850,9 @@ def learning_material_create(request):
     if not theme_id:
         return Response({'detail': 'Нужен theme_id'}, status=400)
     theme = get_object_or_404(Theme, pk=theme_id)
+    if theme.major_id and theme.course_id:
+        if not _teacher_can_access_major_course(request.user, theme.major_id, theme.course_id):
+            return Response({'detail': 'Нет доступа к этой теме'}, status=403)
     title = (request.data.get('title') or 'Новый материал').strip()[:200]
     mtype = (request.data.get('type') or 'text').strip()[:50] or 'text'
     url = request.data.get('url')
@@ -671,7 +874,11 @@ def learning_material_create(request):
 def learning_material_detail(request, pk: int):
     if not _teacher_only(request.user):
         return Response({'detail': 'Только для преподавателя'}, status=403)
-    mat = get_object_or_404(Material, pk=pk)
+    mat = get_object_or_404(Material.objects.select_related('theme'), pk=pk)
+    th = mat.theme
+    if th.major_id and th.course_id:
+        if not _teacher_can_access_major_course(request.user, th.major_id, th.course_id):
+            return Response({'detail': 'Нет доступа к этому материалу'}, status=403)
     if request.method == 'DELETE':
         mat.delete()
         return Response({'status': 'success', 'message': 'Материал удалён'})
@@ -747,10 +954,11 @@ def _normalize_gradebook_cells(sheet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def gradebook_groups(request):
-    """Плоский список всех учебных групп для сайдбара ведомости."""
+    """Учебные группы для ведомости — только закреплённые за преподавателем."""
     if not _teacher_only(request.user):
         return Response({'detail': 'Только для преподавателя'}, status=403)
-    groups = Group.objects.order_by('name', 'id')
+    gids = _teacher_assigned_group_ids(request.user)
+    groups = Group.objects.filter(id__in=gids).order_by('name', 'id') if gids else Group.objects.none()
     return Response({
         'status': 'success',
         'data': GroupOptionSerializer(groups, many=True).data,
@@ -762,12 +970,16 @@ def gradebook_groups(request):
 def gradebook_catalog(request):
     if not _teacher_only(request.user):
         return Response({'detail': 'Только для преподавателя'}, status=403)
+    gids = _teacher_assigned_group_ids(request.user)
     courses = list(Course.objects.order_by('number'))
     payload = []
     for row in majors_for_learning_catalog():
         course_payload = []
         for c in courses:
-            groups = Group.objects.filter(major_id=row['id'], course_id=c.id).order_by('name')
+            q = Group.objects.filter(major_id=row['id'], course_id=c.id).order_by('name')
+            if gids:
+                q = q.filter(id__in=gids)
+            groups = list(q)
             course_payload.append({
                 'id': c.id,
                 'number': c.number,
@@ -793,7 +1005,14 @@ def gradebook_sheet(request):
         gid = request.query_params.get('group_id')
         if not gid:
             return Response({'detail': 'Укажите group_id'}, status=400)
-        group = get_object_or_404(Group, pk=gid)
+        allowed = _teacher_assigned_group_ids(request.user)
+        try:
+            gid_int = int(gid)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Некорректный group_id'}, status=400)
+        if gid_int not in allowed:
+            return Response({'detail': 'Нет доступа к этой группе'}, status=403)
+        group = get_object_or_404(Group, pk=gid_int)
         students = User.objects.filter(group=group).order_by(
             'last_name', 'first_name', 'id',
         )
@@ -829,7 +1048,14 @@ def gradebook_sheet(request):
     group_id = request.data.get('group_id')
     if not group_id:
         return Response({'detail': 'Нужен group_id'}, status=400)
-    group = get_object_or_404(Group, pk=group_id)
+    allowed = _teacher_assigned_group_ids(request.user)
+    try:
+        gid_int = int(group_id)
+    except (TypeError, ValueError):
+        return Response({'detail': 'Некорректный group_id'}, status=400)
+    if gid_int not in allowed:
+        return Response({'detail': 'Нет доступа к этой группе'}, status=403)
+    group = get_object_or_404(Group, pk=gid_int)
     column_titles = request.data.get('column_titles')
     cells = request.data.get('cells')
     if not isinstance(column_titles, list):

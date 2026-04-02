@@ -1,11 +1,14 @@
 from rest_framework import serializers
-<<<<<<< HEAD
+from django.db import connection
+from django.db.utils import ProgrammingError
 from users.models import (
     User, Theme, Theory, Material, Test, Question, AnswerOption, SelfStudyTheme, Task, Attendance,
 )
 
 
 class MaterialNodeSerializer(serializers.ModelSerializer):
+    created_at = serializers.DateTimeField(allow_null=True, required=False)
+
     class Meta:
         model = Material
         fields = ['id', 'title', 'type', 'url', 'description', 'created_at']
@@ -34,25 +37,60 @@ class ThemeCatalogSerializer(serializers.ModelSerializer):
     class Meta:
         model = Theme
         fields = ['id', 'name', 'materials', 'major_id', 'course_id']
-=======
-from django.db import connection
-from django.db.utils import ProgrammingError
-from users.models import User, Theme, Theory, Test, Question, AnswerOption, SelfStudyTheme, Task, Attendance
->>>>>>> 87dd4e194f5bcdb7cf0f440e13f6e51ad0596bf9
 
 
 class StudentProfileSerializer(serializers.ModelSerializer):
-    firstname = serializers.CharField(source='first_name', read_only=True)
-    lastname = serializers.CharField(source='last_name', read_only=True)
-    group_name = serializers.CharField(source='group.name', read_only=True)
+    """Поля имён — напрямую из колонок БД firstname/lastname (модель: first_name/last_name)."""
+
+    firstname = serializers.SerializerMethodField()
+    lastname = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+    major_name = serializers.SerializerMethodField()
+    course_number = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'firstname', 'lastname', 'full_name', 'email', 'role', 'group', 'group_name']
-    
+        fields = [
+            'id',
+            'username',
+            'firstname',
+            'lastname',
+            'full_name',
+            'email',
+            'role',
+            'group_name',
+            'major_name',
+            'course_number',
+            'is_active',
+        ]
+
+    def get_firstname(self, obj):
+        return (getattr(obj, 'first_name', None) or '').strip()
+
+    def get_lastname(self, obj):
+        return (getattr(obj, 'last_name', None) or '').strip()
+
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        # Регистрация: parts[0] → фамилия (lastname), остальное → имя и отчество (firstname).
+        ln = self.get_lastname(obj)
+        fn = self.get_firstname(obj)
+        return f'{ln} {fn}'.strip()
+
+    def get_group_name(self, obj):
+        return obj.group.name if getattr(obj, 'group_id', None) else None
+
+    def get_major_name(self, obj):
+        g = getattr(obj, 'group', None)
+        if g and getattr(g, 'major', None):
+            return g.major.name
+        return None
+
+    def get_course_number(self, obj):
+        g = getattr(obj, 'group', None)
+        if g and getattr(g, 'course', None):
+            return g.course.number
+        return None
 
 
 class ThemeListSerializer(serializers.ModelSerializer):

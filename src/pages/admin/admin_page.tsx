@@ -18,6 +18,7 @@ interface ApiTeacher {
 }
 
 function typeLabel(t: string): string {
+    if (t === 'teacher_registration_confirm') return 'Регистрация преподавателя';
     if (t === 'student_registration_confirm') return 'Регистрация студента';
     return t || 'Заявка';
 }
@@ -33,13 +34,17 @@ const AdminPage: FC = () => {
     const [actingId, setActingId] = useState<number | null>(null);
 
     const loadMe = useCallback(async () => {
-        const res = await authFetch('/api/auth/me/');
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-            const fn = (data as { full_name?: string; firstname?: string; lastname?: string }).full_name;
-            const fn2 = `${(data as { firstname?: string }).firstname || ''} ${(data as { lastname?: string }).lastname || ''}`.trim();
-            if (fn) setAdminName(fn);
-            else if (fn2) setAdminName(fn2);
+        try {
+            const res = await authFetch('/api/auth/me/');
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                const fn = (data as { full_name?: string; firstname?: string; lastname?: string }).full_name;
+                const fn2 = `${(data as { firstname?: string }).firstname || ''} ${(data as { lastname?: string }).lastname || ''}`.trim();
+                if (fn) setAdminName(fn);
+                else if (fn2) setAdminName(fn2);
+            }
+        } catch {
+            /* сеть обрабатывается внутри authFetch; на всякий случай не падаем в overlay */
         }
     }, []);
 
@@ -217,9 +222,13 @@ const AdminPage: FC = () => {
                     </table>
                 </section>
 
-                {teachers.length > 0 && (
-                    <section className="white-card teachers-card">
-                        <h3 className="card-title">Преподаватели</h3>
+                <section className="white-card teachers-card">
+                    <h3 className="card-title">Преподаватели</h3>
+                    {teachers.length === 0 && !loading ? (
+                        <p className="admin-status" style={{ marginTop: 8 }}>
+                            Нет активных преподавателей (новые аккаунты появятся после одобрения заявки).
+                        </p>
+                    ) : (
                         <div className="teachers-name-grid">
                             {teachers.map((t, idx) => (
                                 <div
@@ -239,8 +248,8 @@ const AdminPage: FC = () => {
                                 </div>
                             ))}
                         </div>
-                    </section>
-                )}
+                    )}
+                </section>
             </main>
         </div>
     );

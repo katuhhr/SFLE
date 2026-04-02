@@ -1,16 +1,23 @@
 .student-debts-view {
+    flex: 1;
     width: 100%;
+    max-width: 100%;
+    min-height: 0;
     display: flex;
-    justify-content: center;
-    padding-top: 20px;
+    flex-direction: column;
+    align-items: stretch;
+    padding-top: clamp(8px, 2vw, 20px);
+    box-sizing: border-box;
 }
 
 .debts-stack {
     width: 100%;
-    max-width: 900px;
+    max-width: min(900px, 100%);
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 40px;
+    gap: clamp(24px, 4vw, 40px);
+    box-sizing: border-box;
 }
 
 .debt-section-card {

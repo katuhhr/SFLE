@@ -21,7 +21,7 @@ class TeacherListSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'firstname', 'lastname', 'full_name', 'email', 'groups_taught_names']
     
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}".strip() or obj.username
+        return f"{obj.last_name} {obj.first_name}".strip() or obj.username
 
     def get_groups_taught_names(self, obj):
         # В вашей схеме БД нет group.teacher_id, поэтому считаем,

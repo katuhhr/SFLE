@@ -4,52 +4,127 @@
 }
 
 .materials-nav-sidebar {
-    width: 260px;
-    background: #FFFFFF;
+    width: 272px;
+    flex-shrink: 0;
+    max-width: 100%;
+    background: #ffffff;
     border-radius: 20px;
-    padding: 20px 15px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    padding: 16px 14px 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
 }
 
-.nav-spec-item, .nav-spec-static {
-    padding: 12px 20px;
-    font-size: 15px;
-    font-weight: 600;
-    color: #111827;
-    border-radius: 25px;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
+/* Сайдбар каталога: специальность → курс → группа (макет) */
+.teacher-catalog-sidebar {
+    align-self: flex-start;
 }
 
-.nav-spec-item.is-active {
-    background-color: #1E3A8A;
-    color: #FFFFFF;
-}
-
-.nav-course-sub {
-    margin-left: 15px;
-    margin-bottom: 10px;
+.teacher-catalog-tree {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.nav-course-item {
-    padding: 10px 20px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #4B5563;
-    border-radius: 15px;
-    cursor: pointer;
+.cat-major-block {
+    margin-bottom: 4px;
 }
 
-.nav-course-item.is-active {
-    background-color: #DBEAFE;
-    color: #1E3A8A;
+.cat-major-row {
+    width: 100%;
+    border: none;
+    border-radius: 999px;
+    padding: 11px 16px 11px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 15px;
     font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: #111827;
+    transition: background 0.15s ease, color 0.15s ease;
+    text-align: left;
+}
+
+.cat-major-row:hover {
+    background: #f1f5f9;
+}
+
+.cat-major-row.is-active {
+    background: #1e3a8a;
+    color: #ffffff;
+}
+
+.cat-major-row.is-active:hover {
+    background: #172554;
+    color: #ffffff;
+}
+
+.cat-major-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.cat-major-chevron {
+    flex-shrink: 0;
+    color: #64748b;
+    transition: transform 0.2s ease;
+}
+
+.cat-major-row.is-active .cat-major-chevron {
+    color: #ffffff;
+}
+
+.cat-major-row.is-open .cat-major-chevron {
+    transform: rotate(180deg);
+}
+
+.cat-courses-stack {
+    margin-top: 6px;
+    margin-left: 10px;
+    padding-left: 6px;
+    border-left: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cat-course-wrap {
+    margin-bottom: 4px;
+}
+
+.cat-course-row {
+    width: 100%;
+    border: none;
+    border-radius: 999px;
+    padding: 9px 14px 9px 12px;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 500;
+    color: #4b5563;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.cat-course-row:hover {
+    background: #f8fafc;
+}
+
+.cat-course-row.is-active {
+    background: #dbeafe;
+    color: #1e3a8a;
+    font-weight: 600;
+}
+
+.nav-loading,
+.nav-error {
+    font-size: 14px;
+    padding: 8px 4px 12px;
+}
+
+.nav-error {
+    color: #b91c1c;
 }
 
 .materials-content-view {
@@ -278,29 +353,6 @@
     background: transparent;
 }
 
-.theory-block {
-    margin-bottom: 6px;
-}
-
-.nav-spec-item {
-    gap: 6px;
-}
-
-.nav-spec-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    color: inherit;
-}
-
-.nav-spec-title {
-    flex: 1;
-    text-align: left;
-}
-
 .nav-icon-danger {
     background: none;
     border: none;
@@ -314,19 +366,8 @@
     background: rgba(239, 68, 68, 0.12);
 }
 
-.nav-spec-item.is-active .nav-icon-danger {
-    color: #fecaca;
-}
-
 .nav-theme-row {
     margin-bottom: 2px;
-}
-
-.nav-course-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
 }
 
 .nav-theme-label {
@@ -368,14 +409,6 @@
 .nav-theme-icon-danger:hover {
     background: rgba(239, 68, 68, 0.12);
     color: #dc2626;
-}
-
-.nav-course-item.is-active .nav-theme-icon-btn {
-    color: #1e3a8a;
-}
-
-.nav-course-item.is-active .nav-theme-icon-danger {
-    color: #ef4444;
 }
 
 .nav-theme-input {

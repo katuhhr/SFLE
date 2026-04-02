@@ -1,20 +1,25 @@
 .student-container {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
 }
 
 .student-topbar {
     display: flex;
     align-items: center;
-    /* Увеличиваем отступы по бокам до 60px для эффекта длины */
-    padding: 12px 60px;
-    background: #FFFFFF;
+    flex-shrink: 0;
+    padding: 12px clamp(16px, 4vw, 56px);
+    background: #ffffff;
     border-radius: 0 0 30px 30px;
     box-shadow: 0 4px 25px rgba(0, 0, 0, 0.03);
-    margin-bottom: 40px;
-    /* Расстояние между тремя основными секциями (лого, табы, профиль) */
+    margin-bottom: clamp(16px, 3vw, 40px);
     justify-content: space-between;
+    width: 100%;
+    max-width: 100%;
+    gap: 12px;
 }
 
 .student-logo-section {
@@ -29,10 +34,11 @@
 
 .student-tabs {
     display: flex;
-    /* Увеличиваем расстояние между самими вкладками */
-    gap: 50px;
+    flex-wrap: wrap;
+    gap: clamp(12px, 3vw, 36px);
     justify-content: center;
-    flex: 1; /* Позволяет вкладкам занимать все свободное место по центру */
+    flex: 1;
+    min-width: 0;
 }
 
 .student-tab {
@@ -84,6 +90,13 @@
 
 .student-layout-body {
     flex: 1;
+    min-height: 0;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    padding: 0 clamp(12px, 3vw, 40px) clamp(20px, 4vw, 40px);
+    overflow-x: hidden;
+    overflow-y: auto;
 }

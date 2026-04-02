@@ -113,7 +113,18 @@
     font-size: 22px;
     font-weight: 600;
     color: #111827;
-    margin-bottom: 25px;
+    margin-bottom: 12px;
+}
+
+.requests-hint {
+    font-size: 14px;
+    color: #B45309;
+    background: #FFFBEB;
+    border: 1px solid #FCD34D;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    line-height: 1.45;
 }
 
 .requests-ui-table {

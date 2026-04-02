@@ -1,17 +1,23 @@
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-<<<<<<< HEAD
-from users.models import User, Theme, Theory, Material, Test, Question, AnswerOption, Task, Attendance, TestResult
-from users.major_labels import major_display_label
-=======
+from users.models import (
+    User,
+    Theme,
+    Theory,
+    Material,
+    Test,
+    Question,
+    AnswerOption,
+    Task,
+    Attendance,
+    TestResult,
+    SelfStudyTheme,
+)
 from django.db import connection
-from datetime import datetime
-from users.models import User, Theme, Test, Question, AnswerOption, SelfStudyTheme, Task, Attendance, TestResult
->>>>>>> 87dd4e194f5bcdb7cf0f440e13f6e51ad0596bf9
 from .serializers import (
     StudentProfileSerializer, ThemeListSerializer, ThemeDetailSerializer,
     TestSerializer, AttendanceSerializer, DashboardSerializer,
@@ -26,6 +32,17 @@ def _get_current_student(request):
     if getattr(user, 'is_authenticated', False) and getattr(user, 'role', None) == 'student':
         return user
     return User.objects.filter(role='student', is_active=True).first()
+
+
+def _task_theme_filter_for_student(student: User | None) -> Q:
+    """Задания из тем по специальности/курсу группы и из общих тем (без major/course)."""
+    if not student or not getattr(student, 'group_id', None):
+        return Q(pk__in=[])
+    g = student.group
+    common = Q(theme__major_id__isnull=True, theme__course_id__isnull=True)
+    if g.major_id and g.course_id:
+        return Q(theme__major_id=g.major_id, theme__course_id=g.course_id) | common
+    return common
 
 
 def _theme_ids_for_student(student):
@@ -53,81 +70,91 @@ def _theme_ids_for_student(student):
 
 #профиль студента
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_profile(request):
-    student = _get_current_student(request)
-    
+    user = request.user
+    if getattr(user, 'role', None) != 'student':
+        return Response(
+            {'status': 'error', 'message': 'Профиль доступен только студентам.'},
+            status=403,
+        )
+    student = (
+        User.objects.select_related('group__major', 'group__course')
+        .filter(pk=user.pk)
+        .first()
+    )
     if not student:
-        return Response({
-            'status': 'error',
-            'message': 'Студент не найден. Создайте студента через админку.'
-        }, status=404)
-    
+        return Response({'status': 'error', 'message': 'Пользователь не найден.'}, status=404)
+
     serializer = StudentProfileSerializer(student)
-    return Response({
-        'status': 'success',
-        'data': serializer.data
-    })
+    return Response({'status': 'success', 'data': serializer.data})
 
 
 #гл страница
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_dashboard(request):
-    student = _get_current_student(request)
-    
-    if not student:
-        return Response({
-            'status': 'error',
-            'message': 'Студент не найден'
-        }, status=404)
-    
+    student = (
+        User.objects.select_related('group__major', 'group__course')
+        .filter(pk=request.user.pk)
+        .first()
+    )
+    if not student or getattr(student, 'role', None) != 'student':
+        return Response({'status': 'error', 'message': 'Доступно только студентам.'}, status=403)
+
     now = timezone.now()
-    today = now.date()
     current_tasks = []
     debts = []
 
-    # Все заданные задания из всех тем.
-    tasks = Task.objects.select_related('theme').order_by('deadline_date', 'id')
+    tasks = (
+        Task.objects.filter(_task_theme_filter_for_student(student))
+        .select_related('theme')
+        .order_by('deadline_date', 'id')
+    )
     completed_task_ids = set(
-        Attendance.objects.filter(student=student, is_completed=True, task__isnull=False)
-        .values_list('task_id', flat=True)
+        Attendance.objects.filter(student=student, is_completed=True, task__isnull=False).values_list(
+            'task_id', flat=True
+        )
     )
 
     for task in tasks:
         if task.id in completed_task_ids:
             continue
 
-        deadline = task.deadline_date
-        if isinstance(deadline, datetime):
-            deadline_date = deadline.date()
-        else:
-            deadline_date = deadline
+        dl = task.deadline_date
+        if dl is not None and timezone.is_naive(dl):
+            dl = timezone.make_aware(dl, timezone.get_current_timezone())
+        overdue = dl is not None and dl < now
+
         item = {
             'task_id': task.id,
             'title': task.text[:120],
-            'deadline': deadline,
+            'deadline': task.deadline_date,
             'theme': task.theme.name if task.theme else '',
         }
-
-        if deadline_date and deadline_date < today:
-            debts.append({
-                'type': 'task',
-                'date': deadline_date,
-                'title': task.text[:120],
-                'theme': task.theme.name if task.theme else '',
-                'deadline': deadline,
-                'task_id': task.id,
-            })
-        else:
-            # Если дедлайн не задан или еще не наступил — это текущее задание.
-            current_tasks.append(item)
-    
-    return Response({
-        'status': 'success',
-        'data': {
-            'current_tasks': current_tasks,
-            'debts': debts
+        debt_item = {
+            'type': 'task',
+            'date': dl.date() if dl else None,
+            'title': task.text[:120],
+            'theme': task.theme.name if task.theme else '',
+            'deadline': task.deadline_date,
+            'task_id': task.id,
         }
-    })
+
+        if overdue:
+            debts.append(debt_item)
+        else:
+            current_tasks.append(item)
+
+    return Response(
+        {
+            'status': 'success',
+            'data': {
+                'current_tasks': current_tasks,
+                'debts': debts,
+            },
+        }
+    )
 
 
 #список тем/уроков
@@ -333,23 +360,51 @@ def get_progress(request):
     })
 
 @api_view(['GET'])
-<<<<<<< HEAD
 @permission_classes([IsAuthenticated])
 def get_learning_materials(request):
-    """Темы с материалами: для студента — по группе (специальность + курс); иначе все с привязкой."""
-    user = request.user
-    qs = Theme.objects.filter(major_id__isnull=False, course_id__isnull=False)
-    ctx = None
-    if getattr(user, 'group', None) and user.group_id:
-        g = user.group
-        qs = qs.filter(major_id=g.major_id, course_id=g.course_id)
-        ctx = {
-            'major_name': major_display_label(g.major_id) if g.major_id else None,
-            'course_number': g.course.number if g.course_id else None,
-        }
-    themes = qs.prefetch_related(
-        Prefetch('materials', queryset=Material.objects.order_by('id')),
-    ).order_by('id')
+    """Темы с материалами только по специальности и курсу группы текущего студента (данные из БД)."""
+    student = (
+        User.objects.select_related('group__major', 'group__course')
+        .filter(pk=request.user.pk)
+        .first()
+    )
+    if not student or getattr(student, 'role', None) != 'student':
+        return Response(
+            {'status': 'error', 'message': 'Раздел доступен только студентам.'},
+            status=403,
+        )
+    if not student.group_id:
+        return Response(
+            {
+                'status': 'error',
+                'message': 'У вас не указана группа. Обратитесь к преподавателю.',
+            },
+            status=400,
+        )
+    g = student.group
+    if not g.major_id or not g.course_id:
+        return Response(
+            {
+                'status': 'error',
+                'message': 'У группы не заданы специальность или курс.',
+            },
+            status=400,
+        )
+
+    mat_prefetch = Prefetch('materials', queryset=Material.objects.order_by('id'))
+    themes = (
+        Theme.objects.filter(major_id=g.major_id, course_id=g.course_id)
+        .select_related('major', 'course')
+        .prefetch_related(mat_prefetch)
+        .order_by('id')
+    )
+    major_full = (g.major.name or '').strip() if getattr(g, 'major', None) else None
+
+    ctx = {
+        'major_name': major_full,
+        'major_id': g.major_id,
+        'course_id': g.course_id,
+    }
     return Response({
         'status': 'success',
         'context': ctx,
@@ -357,35 +412,47 @@ def get_learning_materials(request):
     })
 
 
-#самоподготовка (общие темы из `theme` без major/course)
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_self_study(request):
-    qs = (
-        Theme.objects.filter(major__isnull=True, course__isnull=True)
+    """Общая самоподготовка: таблица self_study_theme + темы без привязки к специальности/курсу."""
+    if getattr(request.user, 'role', None) != 'student':
+        return Response(
+            {'status': 'error', 'message': 'Раздел доступен только студентам.'},
+            status=403,
+        )
+
+    items: list[dict] = []
+    theory_ids: set[int] = set()
+
+    for sst in SelfStudyTheme.objects.select_related('theory').order_by('id'):
+        th = sst.theory
+        theory_ids.add(th.id)
+        items.append(
+            {
+                'id': sst.id,
+                'kind': 'self_study',
+                'title': th.name,
+                'content': th.text or '',
+            }
+        )
+
+    for theme in (
+        Theme.objects.filter(major_id__isnull=True, course_id__isnull=True)
         .select_related('theory')
         .order_by('id')
-    )
-    return Response({
-        'status': 'success',
-        'data': ThemeCommonSelfStudySerializer(qs, many=True).data,
-=======
-def get_self_study(request):
-    # Общие темы: только те, которые НЕ привязаны к major/course.
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT t.id, t.name, COALESCE(th.text, '')
-            FROM theme t
-            LEFT JOIN theory th ON th.id = t.theory_id
-            WHERE t.major_id IS NULL AND t.course_id IS NULL
-            ORDER BY t.id
-            """
+    ):
+        if not theme.theory_id or theme.theory_id in theory_ids:
+            continue
+        th = theme.theory
+        theory_ids.add(th.id)
+        items.append(
+            {
+                'id': theme.id,
+                'kind': 'common_theme',
+                'title': theme.name,
+                'content': (th.text or '') if th else '',
+            }
         )
-        rows = cursor.fetchall()
-    data = [{'id': row[0], 'title': row[1], 'content': row[2]} for row in rows]
 
-    return Response({
-        'status': 'success',
-        'data': data
->>>>>>> 87dd4e194f5bcdb7cf0f440e13f6e51ad0596bf9
-    })
+    return Response({'status': 'success', 'data': items})

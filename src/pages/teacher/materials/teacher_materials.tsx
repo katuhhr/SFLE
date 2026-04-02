@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronRight, Plus, Trash2, Edit2, Check, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { ChevronDown, Plus, Trash2, Edit2, Check, ArrowLeft } from 'lucide-react';
 import { apiUrl } from '../../../config';
 import './teacher_materials.css';
 
@@ -23,14 +23,24 @@ interface CatalogCourse {
     number: number;
 }
 
-/** Учебная группа в сайдбаре: под ней — курсы; темы грузятся по major_id группы + course_id. */
+/** Учебная группа; темы грузятся по major_id + course_id группы. */
 interface CatalogGroup {
     id: number;
     name: string;
     major_id: number | null;
     major_label: string;
+    course_id?: number;
+    course_number?: number | null;
     courses: CatalogCourse[];
 }
+
+type CatalogGroupValid = CatalogGroup & { major_id: number; course_id: number };
+
+type MajorCatalogSection = {
+    majorId: number;
+    label: string;
+    courses: Array<{ courseId: number; number: number }>;
+};
 
 const MATERIAL_TYPES = [
     { value: 'text', label: 'Текст' },
@@ -41,8 +51,8 @@ const MATERIAL_TYPES = [
 
 const TeacherMaterials: React.FC = () => {
     const [catalog, setCatalog] = useState<CatalogGroup[]>([]);
-    const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
-    const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+    const [expandedMajors, setExpandedMajors] = useState<Record<number, boolean>>({});
+    const [selectedMajorId, setSelectedMajorId] = useState<number | null>(null);
     const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
     const [topics, setTopics] = useState<ThemeRow[]>([]);
     const [selectedThemeId, setSelectedThemeId] = useState<number | null>(null);
@@ -118,14 +128,6 @@ const TeacherMaterials: React.FC = () => {
             }
             const data = (payload as { data?: CatalogGroup[] }).data || [];
             setCatalog(data);
-            if (!catalogInitRef.current && data.length > 0) {
-                catalogInitRef.current = true;
-                const g0 = data[0];
-                setExpandedGroups({ [g0.id]: true });
-                setSelectedGroupId(g0.id);
-                const c0 = g0.courses[0];
-                setSelectedCourseId(c0?.id ?? null);
-            }
         } catch {
             setError('Нет связи с сервером.');
             setCatalog([]);
@@ -138,8 +140,49 @@ const TeacherMaterials: React.FC = () => {
         loadCatalog();
     }, [loadCatalog]);
 
-    const selectedGroup = catalog.find((g) => g.id === selectedGroupId);
-    const selectedMajorId = selectedGroup?.major_id ?? null;
+    const majorSections = useMemo((): MajorCatalogSection[] => {
+        const valid: CatalogGroupValid[] = catalog.filter(
+            (g): g is CatalogGroupValid =>
+                g.major_id != null && g.course_id != null && typeof g.course_id === 'number',
+        );
+        const byMajor = new Map<number, CatalogGroupValid[]>();
+        for (const g of valid) {
+            const arr = byMajor.get(g.major_id) ?? [];
+            arr.push(g);
+            byMajor.set(g.major_id, arr);
+        }
+        const out: MajorCatalogSection[] = [];
+        for (const [majorId, grps] of Array.from(byMajor.entries())) {
+            const courseMap = new Map<number, { courseId: number; number: number }>();
+            for (const g of grps) {
+                if (!courseMap.has(g.course_id)) {
+                    courseMap.set(g.course_id, {
+                        courseId: g.course_id,
+                        number: g.course_number ?? 0,
+                    });
+                }
+            }
+            const courses = Array.from(courseMap.values()).sort((a, b) => a.number - b.number);
+            out.push({ majorId, label: (grps[0]?.major_label || '').trim() || `Специальность ${majorId}`, courses });
+        }
+        out.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+        return out;
+    }, [catalog]);
+
+    useEffect(() => {
+        if (catalogInitRef.current || majorSections.length === 0) {
+            return;
+        }
+        const sec0 = majorSections[0];
+        const c0 = sec0?.courses[0];
+        if (!sec0 || !c0) {
+            return;
+        }
+        catalogInitRef.current = true;
+        setExpandedMajors({ [sec0.majorId]: true });
+        setSelectedMajorId(sec0.majorId);
+        setSelectedCourseId(c0.courseId);
+    }, [majorSections]);
 
     useEffect(() => {
         if (selectedMajorId == null || selectedCourseId == null) {
@@ -156,20 +199,26 @@ const TeacherMaterials: React.FC = () => {
         }
     }, [editingThemeId]);
 
-    const selectedCourse = selectedGroup?.courses.find((c) => c.id === selectedCourseId);
-    const catalogTitle =
-        selectedGroup && selectedCourse
-            ? `${selectedCourse.number} курс · ${selectedGroup.name}`
-            : 'Выберите группу и курс';
+    const catalogTitle = useMemo(() => {
+        if (selectedMajorId == null || selectedCourseId == null) {
+            return 'Выберите специальность и курс';
+        }
+        const sec = majorSections.find((s) => s.majorId === selectedMajorId);
+        const c = sec?.courses.find((x) => x.courseId === selectedCourseId);
+        if (!sec || !c) {
+            return 'Выберите специальность и курс';
+        }
+        return `${sec.label} · ${c.number} курс`;
+    }, [majorSections, selectedMajorId, selectedCourseId]);
 
-    const toggleGroup = (groupId: number) => {
-        setExpandedGroups((e) => ({ ...e, [groupId]: !e[groupId] }));
+    const toggleMajorExpand = (majorId: number) => {
+        setExpandedMajors((e) => ({ ...e, [majorId]: !e[majorId] }));
     };
 
-    const selectCourse = (groupId: number, courseId: number) => {
-        setSelectedGroupId(groupId);
+    const selectMajorAndCourse = (majorId: number, courseId: number) => {
+        setSelectedMajorId(majorId);
         setSelectedCourseId(courseId);
-        setExpandedGroups((e) => ({ ...e, [groupId]: true }));
+        setExpandedMajors((e) => ({ ...e, [majorId]: true }));
         setEditingThemeId(null);
         setSelectedThemeId(null);
         setSelectedMaterial(null);
@@ -199,9 +248,8 @@ const TeacherMaterials: React.FC = () => {
     };
 
     const refreshCurrentTopics = () => {
-        const mid = selectedGroup?.major_id;
-        if (mid != null && selectedCourseId != null) {
-            fetchTopics(mid, selectedCourseId);
+        if (selectedMajorId != null && selectedCourseId != null) {
+            fetchTopics(selectedMajorId, selectedCourseId);
         }
     };
 
@@ -468,57 +516,52 @@ const TeacherMaterials: React.FC = () => {
 
     return (
         <div className="materials-page-layout">
-            <aside className="materials-nav-sidebar">
+            <aside className="materials-nav-sidebar teacher-catalog-sidebar">
                 {loadingCatalog && <div className="nav-loading">Загрузка…</div>}
                 {error && <div className="nav-error">{error}</div>}
-                <div className="nav-spec-container">
-                    {!loadingCatalog && catalog.length === 0 && !error && (
+                <div className="teacher-catalog-tree">
+                    {!loadingCatalog && majorSections.length === 0 && !error && (
                         <p className="materials-muted-status">Нет учебных групп в базе.</p>
                     )}
-                    {catalog.map((g) => (
-                        <div key={g.id} className="theory-block">
-                            <div className={`nav-spec-item ${expandedGroups[g.id] ? 'is-active' : ''}`}>
-                                <span
-                                    className="nav-spec-title"
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => toggleGroup(g.id)}
-                                    onKeyDown={(e) => e.key === 'Enter' && toggleGroup(g.id)}
+                    {majorSections.map((section) => {
+                        const majorOpen = !!expandedMajors[section.majorId];
+                        const isMajorActive = selectedMajorId === section.majorId;
+                        return (
+                            <div key={section.majorId} className="cat-major-block">
+                                <button
+                                    type="button"
+                                    className={`cat-major-row ${isMajorActive ? 'is-active' : ''} ${majorOpen ? 'is-open' : ''}`}
+                                    onClick={() => toggleMajorExpand(section.majorId)}
                                 >
-                                    {g.name}
-                                </span>
-                                <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className="nav-spec-toggle"
-                                    onClick={() => toggleGroup(g.id)}
-                                    onKeyDown={(e) => e.key === 'Enter' && toggleGroup(g.id)}
-                                >
-                                    {expandedGroups[g.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                                </span>
+                                    <span className="cat-major-label">{section.label}</span>
+                                    <ChevronDown className="cat-major-chevron" size={18} strokeWidth={2} aria-hidden />
+                                </button>
+                                {majorOpen && (
+                                    <div className="cat-courses-stack">
+                                        {section.courses.map((course) => {
+                                            const ck = `${section.majorId}-${course.courseId}`;
+                                            const isCourseActive =
+                                                selectedMajorId === section.majorId &&
+                                                selectedCourseId === course.courseId;
+                                            return (
+                                                <div key={ck} className="cat-course-wrap">
+                                                    <button
+                                                        type="button"
+                                                        className={`cat-course-row ${isCourseActive ? 'is-active' : ''}`}
+                                                        onClick={() =>
+                                                            selectMajorAndCourse(section.majorId, course.courseId)
+                                                        }
+                                                    >
+                                                        {course.number} курс
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
-                            {expandedGroups[g.id] && (
-                                <div className="nav-course-sub">
-                                    {g.courses.map((course) => (
-                                        <div
-                                            key={course.id}
-                                            role="button"
-                                            tabIndex={0}
-                                            className={`nav-course-item ${
-                                                selectedGroupId === g.id && selectedCourseId === course.id
-                                                    ? 'is-active'
-                                                    : ''
-                                            }`}
-                                            onClick={() => selectCourse(g.id, course.id)}
-                                            onKeyDown={(e) => e.key === 'Enter' && selectCourse(g.id, course.id)}
-                                        >
-                                            {course.number} курс
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </aside>
 
@@ -530,12 +573,7 @@ const TeacherMaterials: React.FC = () => {
                             type="button"
                             className="materials-add-btn"
                             onClick={addTheme}
-                            disabled={
-                                saving ||
-                                selectedGroupId == null ||
-                                selectedMajorId == null ||
-                                selectedCourseId == null
-                            }
+                            disabled={saving || selectedMajorId == null || selectedCourseId == null}
                         >
                             <Plus size={18} /> Добавить тему
                         </button>
@@ -547,7 +585,6 @@ const TeacherMaterials: React.FC = () => {
                         <h3 className="materials-subheading">Темы</h3>
                         {!loadingTopics &&
                             topics.length === 0 &&
-                            selectedGroupId != null &&
                             selectedMajorId != null &&
                             selectedCourseId != null && (
                                 <p className="materials-empty">Для этого курса пока нет тем — добавьте первую.</p>

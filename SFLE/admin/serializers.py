@@ -9,18 +9,33 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
 
 
 class ApplicationSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.username', read_only=True)
-    user_email = serializers.CharField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    user_email = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Request
         fields = ['id', 'user', 'user_name', 'user_email', 'type', 'full_name']
 
+    def get_user_name(self, obj):
+        if obj.user_id:
+            return obj.user.username
+        return None
+
+    def get_user_email(self, obj):
+        if obj.user_id:
+            return obj.user.email
+        return obj.pending_email
+
     def get_full_name(self, obj):
-        u = obj.user
-        s = f'{(u.last_name or "").strip()} {(u.first_name or "").strip()}'.strip()
-        return s or (u.username or u.email or '')
+        if obj.user_id:
+            u = obj.user
+            s = f'{(u.last_name or "").strip()} {(u.first_name or "").strip()}'.strip()
+            return s or (u.username or u.email or '')
+        return (
+            f'{(obj.pending_lastname or "").strip()} {(obj.pending_firstname or "").strip()}'.strip()
+            or (obj.pending_email or '')
+        )
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -34,11 +49,14 @@ class TeacherSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'firstname', 'lastname', 'full_name', 'email', 'groups_taught']
     
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        return f"{obj.last_name} {obj.first_name}".strip()
     
     def get_groups_taught(self, obj):
-        # В вашей схеме БД нет FK "group.teacher_id".
-        # Поэтому считаем, что преподаватель "закреплён" за своей group_id.
+        if getattr(obj, 'role', None) != 'teacher':
+            return []
+        tg = getattr(obj, 'teaching_groups', None)
+        if tg is not None and tg.exists():
+            return [{'id': g.id, 'name': g.name} for g in tg.order_by('name', 'id')]
         if getattr(obj, 'group', None):
             return [{'id': obj.group.id, 'name': obj.group.name}]
         return []
@@ -55,6 +73,8 @@ class GroupSerializer(serializers.ModelSerializer):
     
     def get_teacher_name(self, obj):
         teacher = User.objects.filter(role='teacher', group=obj).first()
+        if not teacher:
+            teacher = User.objects.filter(role='teacher', teaching_groups=obj).first()
         if teacher:
             return f"{teacher.first_name} {teacher.last_name}".strip() or teacher.username
         return None
@@ -74,8 +94,15 @@ class GroupCreateSerializer(serializers.ModelSerializer):
         fields = ['name', 'course', 'major']
 
 
+class MajorCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Major
+        fields = ['name']
+
+
 class TeacherGroupUpdateSerializer(serializers.Serializer):
     group_ids = serializers.ListField(
         child=serializers.IntegerField(),
-        required=True
+        required=True,
+        allow_empty=True,
     )

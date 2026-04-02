@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import './student_debts.css';
-import { apiUrl } from '../../../config';
+import { authFetch } from '../../../api/authFetch';
 
 type DashboardTask = {
     task_id: number;
@@ -10,47 +10,64 @@ type DashboardTask = {
     date?: string;
 };
 
+function formatLoadError(payload: unknown, fallback: string): string {
+    const p = payload as { message?: string; detail?: unknown };
+    if (typeof p.message === 'string' && p.message) {
+        return p.message;
+    }
+    const d = p.detail;
+    if (typeof d === 'string') {
+        return d;
+    }
+    if (Array.isArray(d) && d.length) {
+        return d.map((x) => (typeof x === 'string' ? x : String(x))).join(' ');
+    }
+    return fallback;
+}
+
 const StudentDebts: React.FC = () => {
     const [currentTasks, setCurrentTasks] = useState<DashboardTask[]>([]);
     const [debtTasks, setDebtTasks] = useState<DashboardTask[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const authHeaders = useMemo(() => {
-        const token = localStorage.getItem('access_token');
-        return {
-            Accept: 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        };
+    const load = useCallback(async () => {
+        if (!localStorage.getItem('access_token') && !localStorage.getItem('refresh_token')) {
+            setLoading(false);
+            setCurrentTasks([]);
+            setDebtTasks([]);
+            setError('Войдите в аккаунт, чтобы видеть задания.');
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await authFetch('/api/student/dashboard/');
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(formatLoadError(json, 'Ошибка загрузки'));
+            }
+            const data = (json as { data?: { current_tasks?: DashboardTask[]; debts?: DashboardTask[] } }).data;
+            setCurrentTasks(Array.isArray(data?.current_tasks) ? data!.current_tasks! : []);
+            const rawDebts = Array.isArray(data?.debts) ? data!.debts! : [];
+            setDebtTasks(
+                rawDebts.filter(
+                    (item) => (item as { type?: string }).type === 'task' || !(item as { type?: string }).type,
+                ) as DashboardTask[],
+            );
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Ошибка загрузки долгов';
+            setError(msg);
+            setCurrentTasks([]);
+            setDebtTasks([]);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const res = await fetch(apiUrl('/api/student/dashboard/'), {
-                    headers: authHeaders,
-                });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    throw new Error((json as { message?: string }).message || 'Ошибка загрузки долгов');
-                }
-                const data = (json as { data?: { current_tasks?: DashboardTask[]; debts?: DashboardTask[] } }).data;
-                setCurrentTasks(Array.isArray(data?.current_tasks) ? data!.current_tasks! : []);
-                const onlyTaskDebts = Array.isArray(data?.debts)
-                    ? data!.debts!.filter((item) => (item as { type?: string }).type === 'task' || !('type' in item))
-                    : [];
-                setDebtTasks(onlyTaskDebts);
-            } catch (e) {
-                const msg = e instanceof Error ? e.message : 'Ошибка загрузки долгов';
-                setError(msg);
-            } finally {
-                setLoading(false);
-            }
-        };
         void load();
-    }, [authHeaders]);
+    }, [load]);
 
     const fmtDeadline = (value?: string) => {
         if (!value) return '';
@@ -64,7 +81,7 @@ const StudentDebts: React.FC = () => {
             <div className="debts-stack">
 
                 <div className="debt-section-card">
-                    <div className="debt-badge">Текущее задание</div>
+                    <div className="debt-badge">Текущие задания</div>
                     <div className="debt-blue-box">
                         {loading && <p className="debt-text">Загрузка...</p>}
                         {error && <p className="debt-text">{error}</p>}

@@ -1,7 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiUrl } from '../../config';
 import './login.css';
+
+type RegisterGroupOption = { id: number; name: string; label: string };
+
+function formatApiError(data: unknown, fallback: string): string {
+    if (data == null || typeof data !== 'object') return fallback;
+    const d = data as Record<string, unknown>;
+    const detail = d.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+        const s = detail.map(String).filter(Boolean).join(' ');
+        if (s) return s;
+    }
+    if (detail && typeof detail === 'object') {
+        const parts = Object.values(detail).flatMap((v) =>
+            Array.isArray(v) ? v.map(String) : [String(v)],
+        );
+        const s = parts.filter(Boolean).join(' ');
+        if (s) return s;
+    }
+    for (const [, v] of Object.entries(d)) {
+        if (Array.isArray(v)) {
+            const s = v.map(String).filter(Boolean).join(' ');
+            if (s) return s;
+        }
+        if (typeof v === 'string' && v.trim()) return v;
+    }
+    return fallback;
+}
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -11,12 +39,48 @@ const Login: React.FC = () => {
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [groupName, setGroupName] = useState('');
+    const [groupId, setGroupId] = useState('');
+    const [groups, setGroups] = useState<RegisterGroupOption[]>([]);
+    const [groupsLoading, setGroupsLoading] = useState(false);
+    const [groupsError, setGroupsError] = useState<string | null>(null);
 
     const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
     const resetFormMessage = () => setMessage(null);
+
+    useEffect(() => {
+        if (view !== 'signup') return;
+        let cancelled = false;
+        setGroupsLoading(true);
+        setGroupsError(null);
+        (async () => {
+            try {
+                const res = await fetch(apiUrl('/api/auth/register/groups/'), {
+                    headers: { Accept: 'application/json' },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (cancelled) return;
+                if (!res.ok) {
+                    setGroupsError(formatApiError(data, 'Не удалось загрузить список групп.'));
+                    setGroups([]);
+                    return;
+                }
+                const raw = (data as { data?: unknown }).data;
+                setGroups(Array.isArray(raw) ? (raw as RegisterGroupOption[]) : []);
+            } catch {
+                if (!cancelled) {
+                    setGroupsError('Нет связи с сервером при загрузке групп.');
+                    setGroups([]);
+                }
+            } finally {
+                if (!cancelled) setGroupsLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [view]);
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -31,12 +95,15 @@ const Login: React.FC = () => {
                     email,
                     password,
                     role,
-                    group_name: role === 'student' ? groupName : '',
+                    ...(role === 'student' && groupId ? { group_id: Number(groupId) } : {}),
                 }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                setMessage({ type: 'err', text: (data as { detail?: string }).detail || 'Ошибка регистрации' });
+                setMessage({
+                    type: 'err',
+                    text: formatApiError(data, 'Ошибка регистрации'),
+                });
                 return;
             }
             const pending = (data as { pending?: boolean }).pending;
@@ -44,10 +111,11 @@ const Login: React.FC = () => {
 
             setMessage({
                 type: 'ok',
-                text:
-                    pending
-                        ? 'Регистрация прошла успешно. Ожидайте подтверждения преподавателем.'
-                        : (data as { message?: string }).message || 'Успешно',
+                text: pending
+                    ? r === 'teacher'
+                        ? 'Регистрация прошла успешно. Ожидайте подтверждения администратором.'
+                        : 'Регистрация прошла успешно. Ожидайте подтверждения преподавателем.'
+                    : (data as { message?: string }).message || 'Успешно',
             });
 
             setTimeout(() => {
@@ -78,7 +146,7 @@ const Login: React.FC = () => {
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                setMessage({ type: 'err', text: (data as { detail?: string }).detail || 'Ошибка входа' });
+                setMessage({ type: 'err', text: formatApiError(data, 'Ошибка входа') });
                 return;
             }
 
@@ -185,7 +253,9 @@ const Login: React.FC = () => {
                                 )}
                                 <div className="field-wrap">
                                     <input
-                                        type="email"
+                                        type="text"
+                                        inputMode="email"
+                                        autoComplete="email"
                                         placeholder="example@mail.com"
                                         required
                                         value={email}
@@ -213,7 +283,9 @@ const Login: React.FC = () => {
                                                     type="radio"
                                                     name="role"
                                                     checked={role === 'student'}
-                                                    onChange={() => setRole('student')}
+                                                    onChange={() => {
+                                                        setRole('student');
+                                                    }}
                                                     disabled={loading}
                                                 />{' '}
                                                 Студент
@@ -223,22 +295,42 @@ const Login: React.FC = () => {
                                                     type="radio"
                                                     name="role"
                                                     checked={role === 'teacher'}
-                                                    onChange={() => setRole('teacher')}
+                                                    onChange={() => {
+                                                        setRole('teacher');
+                                                        setGroupId('');
+                                                    }}
                                                     disabled={loading}
                                                 />{' '}
                                                 Преподаватель
                                             </label>
                                         </div>
                                         {role === 'student' && (
-                                            <input
-                                                type="text"
-                                                placeholder="Номер группы"
-                                                className="group-input"
-                                                required
-                                                value={groupName}
-                                                onChange={(ev) => setGroupName(ev.target.value)}
-                                                disabled={loading}
-                                            />
+                                            <>
+                                                {groupsError ? (
+                                                    <p className="groups-load-err">{groupsError}</p>
+                                                ) : null}
+                                                <select
+                                                    className="group-select"
+                                                    required
+                                                    value={groupId}
+                                                    onChange={(ev) => setGroupId(ev.target.value)}
+                                                    disabled={loading || groupsLoading || groups.length === 0}
+                                                >
+                                                    <option value="">
+                                                        {groupsLoading ? 'Загрузка групп…' : 'Выберите группу'}
+                                                    </option>
+                                                    {groups.map((g) => (
+                                                        <option key={g.id} value={String(g.id)}>
+                                                            {g.label || g.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {!groupsLoading && groups.length === 0 && !groupsError ? (
+                                                    <p className="groups-load-err">
+                                                        В системе пока нет групп. Обратитесь к администратору.
+                                                    </p>
+                                                ) : null}
+                                            </>
                                         )}
                                     </div>
                                 )}
@@ -249,7 +341,16 @@ const Login: React.FC = () => {
                                     </p>
                                 )}
 
-                                <button type="submit" className="auth-submit-btn" disabled={loading}>
+                                <button
+                                    type="submit"
+                                    className="auth-submit-btn"
+                                    disabled={
+                                        loading ||
+                                        (view === 'signup' &&
+                                            role === 'student' &&
+                                            (groupsLoading || !!groupsError || groups.length === 0))
+                                    }
+                                >
                                     {loading
                                         ? 'Отправка…'
                                         : view === 'signup'

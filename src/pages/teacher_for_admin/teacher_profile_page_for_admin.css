@@ -9,7 +9,8 @@
 
 .teacher-profile-card {
     background: #fff;
-    width: 900px;
+    width: min(1100px, 96vw);
+    max-width: 100%;
     padding: 30px;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
@@ -30,7 +31,19 @@
 .card-content {
     display: flex;
     justify-content: space-between;
+    gap: 24px;
     margin-top: 10px;
+    align-items: flex-start;
+}
+
+.teacher-admin-editor .left-side {
+    width: 28%;
+    min-width: 200px;
+}
+
+.teacher-admin-editor .right-side {
+    flex: 1;
+    min-width: 0;
 }
 
 .left-side {
@@ -124,11 +137,6 @@
     border-right: none;
 }
 
-/* Ограничиваем высоту таблицы как на макете */
-.groups-table tr:nth-child(n+5) {
-    display: none;
-}
-
 .bottom-buttons {
     display: flex;
     gap: 10px;
@@ -205,4 +213,116 @@
     padding-left: 20px;
     color: #334155;
     line-height: 1.7;
+}
+
+.groups-matrix-wrap {
+    max-height: 360px;
+    overflow: auto;
+}
+
+.group-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.5rem;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 6px;
+    color: #334155;
+}
+
+.group-cell:hover {
+    background: #fee2e2;
+}
+
+.group-cell--on {
+    background: #dbeafe;
+    color: #1e3a8a;
+    font-weight: 600;
+}
+
+.teacher-admin-hint {
+    font-size: 12px;
+    color: #64748b;
+    margin: 10px 12px 0;
+    line-height: 1.4;
+}
+
+.left-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 20px;
+    width: 100%;
+    justify-content: center;
+}
+
+.right-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+    justify-content: flex-end;
+}
+
+.action-btn--primary {
+    background: #1e3a8a;
+    color: #fff;
+    border-color: #1e3a8a;
+}
+
+.action-btn--primary:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+.action-btn--primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.assign-wizard {
+    width: min(440px, 94vw);
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.assign-field-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    margin-top: 12px;
+    margin-bottom: 6px;
+}
+
+.assign-select,
+.assign-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.assign-inline-block {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.assign-stack {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.assign-wizard-actions {
+    margin-top: 18px;
+    flex-wrap: wrap;
 }

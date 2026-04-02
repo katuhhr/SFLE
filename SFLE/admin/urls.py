@@ -15,9 +15,11 @@ urlpatterns = [
     path('teachers/<int:teacher_id>/', views.get_teacher_detail, name='teacher_detail'),
     path('teachers/<int:teacher_id>/groups/', views.manage_teacher_groups, name='teacher_groups'),
     
-    #группы
+    #группы и специальности (админка)
     path('groups/', views.get_groups, name='groups'),
     path('groups/create/', views.create_group, name='create_group'),
+    path('majors/create/', views.create_major, name='create_major'),
+    path('courses/', views.admin_courses_list, name='admin_courses'),
 
     # Подтверждение регистрации студентов преподавателем
     path('teacher/requests/', views.get_teacher_registration_requests, name='teacher_registration_requests'),

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { User, Edit2, Check, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { apiUrl } from '../../../config';
+import { authFetch } from '../../../api/authFetch';
 import './teacher_profile.css';
 
 interface RequestItem {
@@ -19,6 +19,7 @@ const TeacherProfile: React.FC = () => {
     });
 
     const [requests, setRequests] = useState<RequestItem[]>([]);
+    const [requestsHint, setRequestsHint] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
     const token = localStorage.getItem('access_token');
@@ -31,12 +32,14 @@ const TeacherProfile: React.FC = () => {
         if (!token) return;
         setLoading(true);
         try {
-            const res = await fetch(apiUrl('/api/admin/teacher/requests/'), {
-                headers: makeHeaders(),
-            });
-            const data = await res.json().catch(() => ({}));
+            const res = await authFetch('/api/admin/teacher/requests/');
+            const data = (await res.json().catch(() => ({}))) as {
+                data?: RequestItem[];
+                meta?: { has_assigned_groups?: boolean; hint?: string | null };
+            };
             if (!res.ok) return;
-            setRequests((data.data || []) as RequestItem[]);
+            setRequests(Array.isArray(data.data) ? data.data : []);
+            setRequestsHint(data.meta?.hint ?? null);
         } finally {
             setLoading(false);
         }
@@ -44,9 +47,7 @@ const TeacherProfile: React.FC = () => {
 
     const loadMe = async () => {
         if (!token) return;
-        const res = await fetch(apiUrl('/api/auth/me/'), {
-            headers: makeHeaders(),
-        });
+        const res = await authFetch('/api/auth/me/');
         const data = await res.json().catch(() => ({}));
         if (!res.ok) return;
         setTeacherData((prev) => ({
@@ -63,16 +64,16 @@ const TeacherProfile: React.FC = () => {
 
     const handleAction = async (id: number, action: 'approve' | 'reject') => {
         if (!token) return;
-        const endpoint =
+        await authFetch(
             action === 'approve'
-                ? apiUrl(`/api/admin/teacher/requests/${id}/approve/`)
-                : apiUrl(`/api/admin/teacher/requests/${id}/reject/`);
-
-        await fetch(endpoint, {
-            method: 'POST',
-            headers: { ...makeHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        });
+                ? `/api/admin/teacher/requests/${id}/approve/`
+                : `/api/admin/teacher/requests/${id}/reject/`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            },
+        );
 
         await loadRequests();
     };
@@ -123,6 +124,11 @@ const TeacherProfile: React.FC = () => {
                 {/* Правая сторона: Заявки */}
                 <div className="profile-right-side">
                     <h3 className="requests-table-title">Таблица заявок</h3>
+                    {requestsHint ? (
+                        <p className="requests-hint" role="status">
+                            {requestsHint}
+                        </p>
+                    ) : null}
                     <div className="requests-scroll-area">
                         <table className="requests-ui-table">
                             <thead>
