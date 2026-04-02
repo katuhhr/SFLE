@@ -22,7 +22,11 @@ class TeacherSerializer(serializers.ModelSerializer):
         return f"{obj.firstname} {obj.lastname}"
     
     def get_groups_taught(self, obj):
-        return [{'id': g.id, 'name': g.name} for g in obj.groups_taught.all()]
+        # В вашей схеме БД нет FK "group.teacher_id".
+        # Поэтому считаем, что преподаватель "закреплён" за своей group_id.
+        if getattr(obj, 'group', None):
+            return [{'id': obj.group.id, 'name': obj.group.name}]
+        return []
 
 
 class GroupSerializer(serializers.ModelSerializer):
@@ -32,18 +36,19 @@ class GroupSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Group
-        fields = ['id', 'name', 'course', 'course_number', 'major', 'major_name', 'teacher', 'teacher_name']
+        fields = ['id', 'name', 'course', 'course_number', 'major', 'major_name', 'teacher_name']
     
     def get_teacher_name(self, obj):
-        if obj.teacher:
-            return f"{obj.teacher.firstname} {obj.teacher.lastname}"
+        teacher = User.objects.filter(role='teacher', group=obj).first()
+        if teacher:
+            return f"{teacher.firstname} {teacher.lastname}".strip() or teacher.username
         return None
 
 
 class GroupCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ['name', 'course', 'major', 'teacher']
+        fields = ['name', 'course', 'major']
 
 
 class TeacherGroupUpdateSerializer(serializers.Serializer):

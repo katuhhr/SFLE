@@ -1,31 +1,86 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, Edit2, Check, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../../../config';
 import './teacher_profile.css';
 
-interface Request {
-    id: string;
+interface RequestItem {
+    id: number;
     studentName: string;
     date: string;
 }
 
 const TeacherProfile: React.FC = () => {
+    const navigate = useNavigate();
     const [isEditing, setIsEditing] = useState(false);
     const [teacherData, setTeacherData] = useState({
-        name: 'Гниенко А. А.',
-        role: 'Преподаватель'
+        name: '',
+        role: 'Преподаватель',
     });
 
-    const [requests, setRequests] = useState<Request[]>([
-        { id: '1', studentName: 'Иванов В. А.', date: '06.03.2026' },
-    ]);
+    const [requests, setRequests] = useState<RequestItem[]>([]);
+    const [loading, setLoading] = useState(false);
 
-    const handleAction = (id: string) => {
-        setRequests(requests.filter(r => r.id !== id));
+    const token = localStorage.getItem('access_token');
+    const makeHeaders = () => ({
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    });
+
+    const loadRequests = async () => {
+        if (!token) return;
+        setLoading(true);
+        try {
+            const res = await fetch(apiUrl('/api/admin/teacher/requests/'), {
+                headers: makeHeaders(),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return;
+            setRequests((data.data || []) as RequestItem[]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadMe = async () => {
+        if (!token) return;
+        const res = await fetch(apiUrl('/api/auth/me/'), {
+            headers: makeHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        setTeacherData((prev) => ({
+            ...prev,
+            name: data.full_name || prev.name,
+        }));
+    };
+
+    useEffect(() => {
+        loadMe();
+        loadRequests();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleAction = async (id: number, action: 'approve' | 'reject') => {
+        if (!token) return;
+        const endpoint =
+            action === 'approve'
+                ? apiUrl(`/api/admin/teacher/requests/${id}/approve/`)
+                : apiUrl(`/api/admin/teacher/requests/${id}/reject/`);
+
+        await fetch(endpoint, {
+            method: 'POST',
+            headers: { ...makeHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+
+        await loadRequests();
     };
 
     const handleLogout = () => {
-        console.log("Выход из системы...");
-        // Здесь будет логика очистки токена и редирект
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        navigate('/');
     };
 
     return (
@@ -79,7 +134,11 @@ const TeacherProfile: React.FC = () => {
                             </tr>
                             </thead>
                             <tbody>
-                            {requests.length > 0 ? (
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={4} className="empty-requests">Загрузка...</td>
+                                </tr>
+                            ) : requests.length > 0 ? (
                                 requests.map((req, index) => (
                                     <tr key={req.id}>
                                         <td className="cell-muted">Заявка №{index + 1}</td>
@@ -87,8 +146,8 @@ const TeacherProfile: React.FC = () => {
                                         <td className="cell-muted">{req.date}</td>
                                         <td>
                                             <div className="request-actions-wrap">
-                                                <button className="req-btn-outline" onClick={() => handleAction(req.id)}>Принять</button>
-                                                <button className="req-btn-outline grey" onClick={() => handleAction(req.id)}>Отклонить</button>
+                                                <button className="req-btn-outline" onClick={() => handleAction(req.id, 'approve')}>Принять</button>
+                                                <button className="req-btn-outline grey" onClick={() => handleAction(req.id, 'reject')}>Отклонить</button>
                                             </div>
                                         </td>
                                     </tr>

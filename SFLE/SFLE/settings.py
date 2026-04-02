@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(BASE_DIR))
 # 2. Безопасность
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 DEBUG = True  # Не забудь выключить в продакшене
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '[::1]']
 
 # 3. Приложения
 INSTALLED_APPS = [
@@ -28,8 +28,8 @@ INSTALLED_APPS = [
     
     # Локальные приложения
     'users',
-    #'student',
-    #'admin_panel',
+    'student.apps.StudentConfig',
+    'admin.apps.AdminApiConfig',
 ]
 
 TEMPLATES = [
@@ -62,14 +62,14 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'SFLE.urls'
 WSGI_APPLICATION = 'SFLE.wsgi.application'
 
-# 5. База данных (PostgreSQL)
+# 5. База данных (PostgreSQL) — тот же сервер, что и в psycopg2.connect(host=..., ...)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'sfle_db',
         'USER': 'app_user',           # или 'postgres'
         'PASSWORD': '123456',
-        'HOST': 'localhost',
+        'HOST': '185.28.85.111',
         'PORT': '5432',
     }
 }
@@ -101,9 +101,10 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# 8. CORS
+# 8. CORS (только для fetch/XHR с фронта; прямой заход в браузере на :8000 к CORS не относится)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 

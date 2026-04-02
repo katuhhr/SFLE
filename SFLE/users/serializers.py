@@ -22,8 +22,9 @@ class TeacherListSerializer(serializers.ModelSerializer):
         return f"{obj.firstname} {obj.lastname}".strip() or obj.username
 
     def get_groups_taught_names(self, obj):
-        # Используем .all(), так как это ManyToMany или Reverse ForeignKey
-        return [g.name for g in obj.groups_taught.all()]
+        # В вашей схеме БД нет group.teacher_id, поэтому считаем,
+        # что преподаватель "закреплён" за своей user.group_id.
+        return [obj.group.name] if getattr(obj, 'group', None) else []
 
 
 class GroupSerializer(serializers.ModelSerializer):
@@ -34,15 +35,16 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ['id', 'name', 'course', 'course_number', 'major', 'major_name', 
-                  'teacher', 'teacher_name']
+                  'teacher_name']
     
     def get_teacher_name(self, obj):
-        if obj.teacher:
-            return f"{obj.teacher.firstname} {obj.teacher.lastname}".strip() or obj.teacher.username
+        teacher = User.objects.filter(role='teacher', group=obj).first()
+        if teacher:
+            return f"{teacher.firstname} {teacher.lastname}".strip() or teacher.username
         return "Не назначен"
 
 
 class GroupCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ['name', 'course', 'major', 'teacher']
+        fields = ['name', 'course', 'major']

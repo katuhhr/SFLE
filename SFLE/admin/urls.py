@@ -18,4 +18,9 @@ urlpatterns = [
     #группы
     path('groups/', views.get_groups, name='groups'),
     path('groups/create/', views.create_group, name='create_group'),
+
+    # Подтверждение регистрации студентов преподавателем
+    path('teacher/requests/', views.get_teacher_registration_requests, name='teacher_registration_requests'),
+    path('teacher/requests/<int:req_id>/approve/', views.approve_teacher_registration_request, name='approve_teacher_registration_request'),
+    path('teacher/requests/<int:req_id>/reject/', views.reject_teacher_registration_request, name='reject_teacher_registration_request'),
 ]

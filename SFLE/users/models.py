@@ -50,8 +50,6 @@ class Group(models.Model):
     name = models.CharField(max_length=200, verbose_name='Название группы')
     course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='groups', verbose_name='Курс')
     major = models.ForeignKey('Major', on_delete=models.CASCADE, related_name='groups', verbose_name='Специальность')
-    teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='groups_taught', 
-                                limit_choices_to={'role': 'teacher'}, verbose_name='Преподаватель')
     
     class Meta:
         db_table = 'group'
