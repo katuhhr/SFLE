@@ -31,12 +31,37 @@ class TheoryLearningTreeSerializer(serializers.ModelSerializer):
 
 
 class ThemeCatalogSerializer(serializers.ModelSerializer):
-    """Тема с материалами для каталога «специальность + курс»."""
+    """Тема с материалами; для привязанных тем — название специальности и номер курса."""
     materials = MaterialNodeSerializer(many=True, read_only=True)
+    major_name = serializers.SerializerMethodField()
+    course_number = serializers.SerializerMethodField()
+    is_common = serializers.SerializerMethodField()
 
     class Meta:
         model = Theme
-        fields = ['id', 'name', 'materials', 'major_id', 'course_id']
+        fields = [
+            'id',
+            'name',
+            'materials',
+            'major_id',
+            'course_id',
+            'major_name',
+            'course_number',
+            'is_common',
+        ]
+
+    def get_major_name(self, obj):
+        if obj.major_id and getattr(obj, 'major', None):
+            return (obj.major.name or '').strip() or None
+        return None
+
+    def get_course_number(self, obj):
+        if obj.course_id and getattr(obj, 'course', None):
+            return obj.course.number
+        return None
+
+    def get_is_common(self, obj):
+        return obj.major_id is None and obj.course_id is None
 
 
 class StudentProfileSerializer(serializers.ModelSerializer):

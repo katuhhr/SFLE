@@ -1,10 +1,4 @@
-"""
-Заявка студента без строки в user: user_id NULL + поля pending_*.
-Таблица request уже существует в БД — правим схему через SQL.
 
-Если migrate падает с «must be owner of table request», выполните SQL от имени владельца
-таблицы или дайте роли БД право ALTER TABLE request, затем снова migrate users.
-"""
 import django.db.models.deletion
 from django.db import migrations, models
 

@@ -120,6 +120,10 @@
 }
 
 .theme-topic-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
     padding: 14px 20px;
     text-align: left;
     background: #fff;
@@ -129,6 +133,22 @@
     font-size: 16px;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-topic-name {
+    font-size: 16px;
+    line-height: 1.35;
+}
+
+.theme-topic-scope {
+    font-size: 12px;
+    line-height: 1.3;
+    color: #64748b;
+    font-weight: 400;
+}
+
+.theme-topic-row.active .theme-topic-scope {
+    color: #3b5998;
 }
 
 .theme-topic-row:hover {
@@ -220,8 +240,24 @@
     border-radius: 10px;
     font-size: 18px;
     font-weight: 500;
-    display: inline-block;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
     margin-bottom: 30px;
+}
+
+.content-topic-title {
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.content-topic-scope {
+    font-size: 13px;
+    font-weight: 400;
+    opacity: 0.92;
+    line-height: 1.35;
 }
 
 .content-body-sheet {

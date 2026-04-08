@@ -2,7 +2,7 @@ import React, { FC, useState, useEffect, useCallback } from 'react';
 import { format, startOfWeek, addDays, isSameDay, parse, differenceInCalendarDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { X } from 'lucide-react';
-import { apiUrl } from '../../../config';
+import { authFetch } from '../../../api/authFetch';
 import './teacher_schedule.css';
 
 interface ILesson {
@@ -27,6 +27,9 @@ interface GroupOption {
 }
 
 const TeacherSchedule: FC = () => {
+    const hasAuthTokens = Boolean(
+        localStorage.getItem('access_token') || localStorage.getItem('refresh_token'),
+    );
     const today = new Date();
     const initialMonday = startOfWeek(today, { weekStartsOn: 1 });
     const [monday] = useState(initialMonday);
@@ -43,13 +46,6 @@ const TeacherSchedule: FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [defaultGroupName, setDefaultGroupName] = useState('');
     const [groupOptions, setGroupOptions] = useState<GroupOption[]>([]);
-
-    const token = localStorage.getItem('access_token');
-    const makeHeaders = (json = false): HeadersInit => ({
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(json ? { 'Content-Type': 'application/json' } : {}),
-    });
 
     const buildDaysFromApi = useCallback((entries: ApiScheduleRow[], weekMonday: Date) => {
         const d = [...Array(6)].map((_, i) => ({
@@ -76,7 +72,7 @@ const TeacherSchedule: FC = () => {
     }, []);
 
     const loadSchedule = useCallback(async () => {
-        if (!token) {
+        if (!localStorage.getItem('access_token') && !localStorage.getItem('refresh_token')) {
             setLoading(false);
             setError('Войдите в аккаунт.');
             return;
@@ -84,22 +80,22 @@ const TeacherSchedule: FC = () => {
         setLoading(true);
         setError(null);
         try {
-            const meRes = await fetch(apiUrl('/api/auth/me/'), { headers: makeHeaders() });
+            const meRes = await authFetch('/api/auth/me/');
             const me = await meRes.json().catch(() => ({}));
             if (meRes.ok && typeof (me as { group?: string }).group === 'string') {
                 setDefaultGroupName((me as { group: string }).group);
             }
 
-            const gRes = await fetch(apiUrl('/api/admin/teacher/groups/'), { headers: makeHeaders() });
+            const gRes = await authFetch('/api/admin/teacher/groups/');
             const gPayload = await gRes.json().catch(() => ({}));
             if (gRes.ok && Array.isArray((gPayload as { data?: GroupOption[] }).data)) {
                 setGroupOptions((gPayload as { data: GroupOption[] }).data);
             }
 
             const ws = format(monday, 'yyyy-MM-dd');
-            const res = await fetch(apiUrl(`/api/admin/teacher/schedule/?week_start=${encodeURIComponent(ws)}`), {
-                headers: makeHeaders(),
-            });
+            const res = await authFetch(
+                `/api/admin/teacher/schedule/?week_start=${encodeURIComponent(ws)}`,
+            );
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setError((payload as { detail?: string }).detail || 'Не удалось загрузить расписание');
@@ -112,14 +108,16 @@ const TeacherSchedule: FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [token, monday, buildDaysFromApi]);
+    }, [monday, buildDaysFromApi]);
 
     useEffect(() => {
         loadSchedule();
     }, [loadSchedule]);
 
     const saveSchedule = async () => {
-        if (!token) return;
+        if (!localStorage.getItem('access_token') && !localStorage.getItem('refresh_token')) {
+            return;
+        }
         setSaving(true);
         setError(null);
         const lessons: Array<{
@@ -147,9 +145,9 @@ const TeacherSchedule: FC = () => {
             }
         }
         try {
-            const res = await fetch(apiUrl('/api/admin/teacher/schedule/'), {
+            const res = await authFetch('/api/admin/teacher/schedule/', {
                 method: 'PUT',
-                headers: makeHeaders(true),
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     week_start: format(monday, 'yyyy-MM-dd'),
                     lessons,
@@ -212,7 +210,7 @@ const TeacherSchedule: FC = () => {
             </div>
             {loading && <p className="schedule-status">Загрузка…</p>}
             {error && <p className="schedule-status schedule-status-err">{error}</p>}
-            {!loading && !token && (
+            {!loading && !hasAuthTokens && (
                 <p className="schedule-status schedule-status-err">Нужна авторизация преподавателя.</p>
             )}
 

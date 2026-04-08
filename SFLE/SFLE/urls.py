@@ -24,8 +24,9 @@ def root(_request):
         '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
         '<title>SFLE</title></head><body>'
         '<p>Сервер SFLE (API). Веб-интерфейс — отдельный фронтенд (React).</p><ul>'
-        '<li><a href="/api/auth/token/">API: JWT (POST)</a></li>'
-        '<li><a href="/api/student/themes/">API: темы студента</a></li>'
+        '<li><a href="/api/auth/token/">API: JWT (POST) — получить access-токен (email + password)</a></li>'
+        '<li>Темы студента: <code>GET /api/student/themes/</code> только с заголовком '
+        '<code>Authorization: Bearer &lt;access&gt;</code> (без токена будет 401).</li>'
         '</ul></body></html>'
     )
     return HttpResponse(body, content_type='text/html; charset=utf-8')

@@ -62,6 +62,14 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user:
             raise serializers.ValidationError({"detail": "Пользователь с таким email не найден."})
 
+        if not user.is_active:
+            raise serializers.ValidationError(
+                {"detail": "Учётная запись не активирована. Обратитесь к администратору."}
+            )
+
+        if not user.check_password(password):
+            raise serializers.ValidationError({"detail": "Неверный пароль."})
+
         # SimpleJWT authenticates through USERNAME_FIELD, so pass username explicitly.
         token_data = super().validate({"username": user.username, "password": password})
         token_data["role"] = user.role

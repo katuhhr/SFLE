@@ -28,7 +28,49 @@
     font-size: 28px;
     font-weight: 700;
     color: #111827;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
+}
+
+.grades-section {
+    margin-bottom: clamp(24px, 4vw, 40px);
+}
+
+.grades-section:last-child {
+    margin-bottom: 0;
+}
+
+.grades-subtitle {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e3a8a;
+    margin: 0 0 14px;
+}
+
+.grades-muted {
+    color: #6b7280;
+    font-size: 15px;
+    margin: 0 0 12px;
+    line-height: 1.45;
+}
+
+.grades-group-label {
+    font-size: 14px;
+    color: #4b5563;
+    margin: 0 0 10px;
+}
+
+.gradebook-table-wrap {
+    margin-bottom: 0;
+}
+
+.gradebook-table {
+    table-layout: auto;
+    min-width: 100%;
+}
+
+.gradebook-table th,
+.gradebook-table td {
+    min-width: 5rem;
 }
 
 .grades-table-wrapper {

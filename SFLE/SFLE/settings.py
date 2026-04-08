@@ -66,9 +66,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'sfle_db',
-        'USER': 'app_user',           # или 'postgres'
+        'USER': 'postgres',           # или 'postgres'
         'PASSWORD': '123456',
-        'HOST': '185.28.85.111',
+        'HOST': 'localhost',
         'PORT': '5432',
     }
 }

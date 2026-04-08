@@ -16,12 +16,11 @@ interface ThemeRow {
     id: number;
     name: string;
     materials: MaterialRow[];
-}
-
-interface MaterialsContext {
-    major_name: string | null;
-    major_id?: number;
-    course_id?: number;
+    major_id?: number | null;
+    course_id?: number | null;
+    major_name?: string | null;
+    course_number?: number | null;
+    is_common?: boolean;
 }
 
 function formatApiError(payload: unknown, fallback: string): string {
@@ -48,7 +47,6 @@ function formatApiError(payload: unknown, fallback: string): string {
 
 const StudentMaterials: React.FC = () => {
     const [themes, setThemes] = useState<ThemeRow[]>([]);
-    const [context, setContext] = useState<MaterialsContext | null>(null);
     const [selectedThemeId, setSelectedThemeId] = useState<number | null>(null);
     const [themeListOpen, setThemeListOpen] = useState(true);
     const [loading, setLoading] = useState(true);
@@ -58,7 +56,6 @@ const StudentMaterials: React.FC = () => {
         if (!localStorage.getItem('access_token') && !localStorage.getItem('refresh_token')) {
             setLoading(false);
             setThemes([]);
-            setContext(null);
             setSelectedThemeId(null);
             setError('Войдите в аккаунт, чтобы видеть материалы.');
             return;
@@ -70,19 +67,16 @@ const StudentMaterials: React.FC = () => {
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setThemes([]);
-                setContext(null);
                 setSelectedThemeId(null);
                 setError(formatApiError(payload, 'Не удалось загрузить материалы'));
                 return;
             }
-            const data = (payload as { data?: ThemeRow[]; context?: MaterialsContext | null }).data || [];
+            const data = (payload as { data?: ThemeRow[] }).data || [];
             const list = Array.isArray(data) ? data : [];
             setThemes(list);
-            setContext((payload as { context?: MaterialsContext | null }).context ?? null);
             setSelectedThemeId(list.length ? list[0].id : null);
         } catch {
             setThemes([]);
-            setContext(null);
             setSelectedThemeId(null);
             setError('Нет связи с сервером.');
         } finally {
@@ -94,17 +88,12 @@ const StudentMaterials: React.FC = () => {
         void load();
     }, [load]);
 
-    const specialtyTitle = context?.major_name?.trim() || null;
-
     const selectedTheme = themes.find((t) => t.id === selectedThemeId) ?? null;
     const materials = selectedTheme?.materials ?? [];
 
     return (
         <div className="materials-page-container">
             <aside className="materials-sidebar">
-                {specialtyTitle && (
-                    <div className="sidebar-context-line">{specialtyTitle}</div>
-                )}
                 <button
                     type="button"
                     className="sidebar-theme-dropdown-trigger"
@@ -138,7 +127,7 @@ const StudentMaterials: React.FC = () => {
                                     className={`theme-topic-row ${selectedThemeId === theme.id ? 'active' : ''}`}
                                     onClick={() => setSelectedThemeId(theme.id)}
                                 >
-                                    {theme.name}
+                                    <span className="theme-topic-name">{theme.name}</span>
                                 </button>
                             ))}
                     </nav>
@@ -166,7 +155,9 @@ const StudentMaterials: React.FC = () => {
                     )}
                     {!loading && !error && themes.length > 0 && selectedTheme ? (
                         <>
-                            <header className="content-topic-header">{selectedTheme.name}</header>
+                            <header className="content-topic-header">
+                                <span className="content-topic-title">{selectedTheme.name}</span>
+                            </header>
 
                             {materials.length === 0 ? (
                                 <div className="content-body-sheet">

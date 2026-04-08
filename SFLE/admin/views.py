@@ -600,13 +600,26 @@ def teacher_schedule_week(request):
             'day_of_week': _SCHEDULE_DAYS_RU[ld.weekday()],
         })
 
+    # Только строки своих групп за эту неделю; иначе при exclude(id__in=keep).delete()
+    # стиралось расписание всех преподавателей за интервал.
     with transaction.atomic():
-        base = Schedule.objects.filter(lesson_date__gte=ws, lesson_date__lte=we)
-        keep = {n['id'] for n in normalized if n['id']}
-        base.exclude(id__in=keep).delete()
+        base = Schedule.objects.filter(
+            lesson_date__gte=ws,
+            lesson_date__lte=we,
+            group_name__in=allowed_names,
+        )
+        keep_ids = [n['id'] for n in normalized if n['id']]
+        to_remove = base
+        if keep_ids:
+            to_remove = base.exclude(id__in=keep_ids)
+        to_remove.delete()
+
         for n in normalized:
             if n['id']:
-                obj = Schedule.objects.filter(id=n['id']).first()
+                obj = Schedule.objects.filter(
+                    id=n['id'],
+                    group_name__in=allowed_names,
+                ).first()
                 if not obj:
                     continue
                 obj.lesson_date = n['lesson_date']
@@ -624,9 +637,11 @@ def teacher_schedule_week(request):
                     room=n['room'],
                 )
 
-    qs = Schedule.objects.filter(lesson_date__gte=ws, lesson_date__lte=we).order_by(
-        'lesson_date', 'lesson_time', 'id',
-    )
+    qs = Schedule.objects.filter(
+        lesson_date__gte=ws,
+        lesson_date__lte=we,
+        group_name__in=allowed_names,
+    ).order_by('lesson_date', 'lesson_time', 'id')
     return Response({
         'status': 'success',
         'message': 'Расписание сохранено',
