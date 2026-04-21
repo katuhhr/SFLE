@@ -9,7 +9,6 @@ from users.gradebook_schedule import gradebook_column_headers_from_schedule
 from users.models import (
     User,
     Theme,
-    Theory,
     Material,
     Test,
     Question,
@@ -22,8 +21,8 @@ from users.models import (
 from .self_study_utils import build_self_study_items
 from .serializers import (
     StudentProfileSerializer, ThemeListSerializer, ThemeDetailSerializer,
-    TestSerializer, AttendanceSerializer, DashboardSerializer,
-    TheoryLearningTreeSerializer, ThemeCatalogSerializer,
+    TestSerializer, AttendanceSerializer,
+    ThemeCatalogSerializer,
 )
 
 

@@ -681,6 +681,9 @@ const TeacherMaterials: React.FC = () => {
 
     const selectedTheme = selectedThemeId ? findTheme(selectedThemeId) : undefined;
     const themeTitleShown = themeDetail?.name ?? selectedTheme?.name ?? '';
+    const showTestsStub = () => {
+        window.alert('Тесты в разработке.');
+    };
 
     return (
         <div className="materials-page-layout">
@@ -737,14 +740,19 @@ const TeacherMaterials: React.FC = () => {
                 <div className="materials-white-sheet">
                     <div className="materials-view-header materials-catalog-title-row">
                         <h2 className="materials-view-title materials-catalog-title">{catalogTitle}</h2>
-                        <button
-                            type="button"
-                            className="materials-add-btn"
-                            onClick={addTheme}
-                            disabled={saving || selectedMajorId == null || selectedCourseId == null}
-                        >
-                            <Plus size={18} /> Добавить тему
-                        </button>
+                        <div className="materials-header-btns">
+                            <button type="button" className="materials-add-btn" onClick={showTestsStub}>
+                                Тесты
+                            </button>
+                            <button
+                                type="button"
+                                className="materials-add-btn"
+                                onClick={addTheme}
+                                disabled={saving || selectedMajorId == null || selectedCourseId == null}
+                            >
+                                <Plus size={18} /> Добавить тему
+                            </button>
+                        </div>
                     </div>
 
                     {loadingTopics && <p className="materials-muted-status">Загрузка тем…</p>}

@@ -213,17 +213,3 @@ def me(request):
     )
 
 
-class EmailAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """В поле `username` можно передать email — ищем пользователя и подставляем `username`."""
-
-    def validate(self, attrs):
-        login = attrs.get('username') or ''
-        if login and '@' in str(login):
-            u = User.objects.filter(email__iexact=str(login).strip()).first()
-            if u is not None:
-                attrs['username'] = u.username
-        return super().validate(attrs)
-
-
-class EmailAwareTokenObtainPairView(TokenObtainPairView):
-    serializer_class = EmailAwareTokenObtainPairSerializer

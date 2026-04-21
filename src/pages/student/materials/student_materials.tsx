@@ -186,6 +186,9 @@ const StudentMaterials: React.FC = () => {
             return iso;
         }
     };
+    const showTestsStub = () => {
+        window.alert('Тесты в разработке.');
+    };
 
     return (
         <div className="materials-page-container">
@@ -254,6 +257,11 @@ const StudentMaterials: React.FC = () => {
                             <header className="content-topic-header">
                                 <span className="content-topic-title">{selectedTheme.name}</span>
                             </header>
+                            <div className="mini-nav">
+                                <button type="button" className="mini-link" onClick={showTestsStub}>
+                                    Тесты
+                                </button>
+                            </div>
 
                             {detailLoading && (
                                 <p className="lecturer-text muted materials-detail-loading">

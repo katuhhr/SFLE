@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, Edit2, Check, LogOut } from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authFetch } from '../../../api/authFetch';
 import './teacher_profile.css';
@@ -12,7 +12,6 @@ interface RequestItem {
 
 const TeacherProfile: React.FC = () => {
     const navigate = useNavigate();
-    const [isEditing, setIsEditing] = useState(false);
     const [teacherData, setTeacherData] = useState({
         name: '',
         role: 'Преподаватель',
@@ -23,11 +22,6 @@ const TeacherProfile: React.FC = () => {
     const [loading, setLoading] = useState(false);
 
     const token = localStorage.getItem('access_token');
-    const makeHeaders = () => ({
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    });
-
     const loadRequests = async () => {
         if (!token) return;
         setLoading(true);
@@ -94,27 +88,11 @@ const TeacherProfile: React.FC = () => {
                     </div>
 
                     <div className="teacher-meta">
-                        {isEditing ? (
-                            <input
-                                className="name-edit-field"
-                                value={teacherData.name}
-                                onChange={(e) => setTeacherData({...teacherData, name: e.target.value})}
-                                autoFocus
-                            />
-                        ) : (
-                            <h2 className="display-name">{teacherData.name}</h2>
-                        )}
+                        <h2 className="display-name">{teacherData.name}</h2>
                         <p className="display-role">{teacherData.role}</p>
                     </div>
 
                     <div className="profile-actions-group">
-                        <button
-                            className={`profile-toggle-btn ${isEditing ? 'mode-save' : 'mode-edit'}`}
-                            onClick={() => setIsEditing(!isEditing)}
-                        >
-                            {isEditing ? <><Check size={18}/> Сохранить</> : <><Edit2 size={14}/> Изменить</>}
-                        </button>
-
                         <button className="teacher-logout-btn" onClick={handleLogout}>
                             <LogOut size={16} /> Выйти
                         </button>
